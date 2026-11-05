@@ -1,4 +1,4 @@
-module example.com/edotgo
+module github.com/chikilov/edot-go
 
 go 1.26.0
 

@@ -45,12 +45,20 @@ Cloud 인증은 Collector 쪽에서 설정할 수 있습니다.
 
 ## 앱에 적용
 
-현재 모듈 경로 `example.com/edotgo`는 배포 전용 임시 경로입니다. 저장소를 게시하면
-`go.mod`와 예제 import를 실제 경로로 바꾸세요. 다른 로컬 프로젝트에서는 다음처럼 연결할 수 있습니다.
+모듈 경로는 `github.com/chikilov/edot-go`입니다. 비공개 저장소 접근 권한이 있는 GitHub 계정으로
+Git 인증을 설정한 뒤 사용하세요.
 
 ```bash
-go mod edit -require=example.com/edotgo@v0.0.0
-go mod edit -replace=example.com/edotgo=/absolute/path/to/edot-go
+go env -w GOPRIVATE=github.com/chikilov/edot-go
+go get github.com/chikilov/edot-go@main
+```
+
+이미 GOPRIVATE 값이 있다면 기존 패턴을 유지하면서 위 경로를 추가하세요.
+다른 로컬 프로젝트에서 연결하려면 다음처럼 설정할 수 있습니다.
+
+```bash
+go mod edit -require=github.com/chikilov/edot-go@v0.0.0
+go mod edit -replace=github.com/chikilov/edot-go=/absolute/path/to/edot-go
 go mod tidy
 ```
 

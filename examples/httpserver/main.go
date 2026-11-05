@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	edotgo "example.com/edotgo"
+	edotgo "github.com/chikilov/edot-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
