@@ -178,8 +178,10 @@ Kibana 중앙 설정(OpAMP)과 자동 연동되는 API는 아닙니다.
 
 스택트레이스는 span **시작 호출 위치**를 수집해 종료 시 임계값 이상인 span에 `code.stacktrace`로 추가합니다.
 동시에 보관하는 호출 스택은 인스턴스당 최대 4096개이며 초과한 span은 스택 없이 전송됩니다.
+시작 시에는 고정 크기 버퍼에 호출 주소(PC)만 보관하고, 종료 시 임계값 이상인 span에 한해 문자열로 변환합니다.
+호출 주소 캡처와 문자열 변환은 공용 mutex 밖에서 수행하며 버퍼는 재사용합니다.
 끝나지 않는 span은 종료 또는 SDK shutdown까지 보관되며 상한에 포함됩니다.
-기능을 켜면 빠른 span도 시작 시 스택 캡처 비용이 발생합니다. 부하 테스트 후 임계값/비활성화를 결정하세요.
+빠른 span도 호출 주소 수집 비용은 발생합니다. 측정 결과와 재현 방법은 [PERFORMANCE.md](PERFORMANCE.md)에 있습니다.
 원본 Java의 현재 및 legacy 스택트레이스 환경변수도 별칭으로 인식합니다.
 
 Baggage 복사는 opt-in입니다. 예: `tenant.*`, `region`을 쉼표로 구분할 수 있습니다.
@@ -201,3 +203,20 @@ baggage와 스택트레이스를 검사합니다. JSON은 gzip·TLS·partial suc
 Elastic Cloud의 실제 계정에 대한 end-to-end 검증은 별도로 필요합니다.
 
 Apache-2.0. 원본과 이식 범위의 출처는 [NOTICE](NOTICE), [PORTING.md](PORTING.md)에 기록했습니다.
+
+## 장애 검증 및 CI
+
+장애 테스트는 실제 로컬 HTTP/gRPC 서버에 오류를 주입합니다. HTTP 429·503 및 gRPC Unavailable의
+재시도, 영구 오류의 비재시도, 연결 실패와 느린 응답의 deadline, 지속 장애의 전송 제한,
+큐 포화 시 애플리케이션 비차단 및 span 폐기, 전송 중 shutdown을 검사합니다.
+기본 exporter backoff를 유지하므로 전체 테스트는 약 1~2분 걸릴 수 있습니다.
+
+```bash
+go test -race -timeout=3m ./...
+```
+
+GitHub Actions는 main push·pull request·수동 실행을 지원합니다. Linux·macOS에서 포맷·의존성·
+race/커버리지·vet·빌드를 검사하고 커버리지를 14일 보관합니다. 별도 Linux job에서 벤치마크를
+측정해 아티팩트로 남깁니다. 공유 runner의 시간 편차로 빌드를 실패시키지는 않습니다.
+수집 데이터는 메모리 큐에 보관되므로 프로세스 종료나 큐 포화 시 유실될 수 있습니다.
+장기 보관과 재시작 복구가 필요하면 Collector의 persistent queue를 별도로 구성하세요.

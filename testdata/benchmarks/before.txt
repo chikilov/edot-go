@@ -1,0 +1,60 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/chikilov/edot-go
+cpu: Apple M3 Pro
+BenchmarkStackProcessor/disabled/serial           	  358178	       502.1 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial           	  351127	       669.7 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial           	  333633	       708.9 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-4         	  439461	       575.7 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-4         	  397196	       562.4 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-4         	  420645	       548.6 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-8         	  436477	       563.7 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-8         	  277503	       552.1 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/serial-8         	  426160	       529.6 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel         	  278242	       619.6 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel         	  311976	       612.9 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel         	  379262	       621.9 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-4       	  472686	       378.4 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-4       	  442748	       395.9 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-4       	  632670	       385.9 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-8       	  369644	       426.6 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-8       	  480207	       437.0 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/disabled/parallel-8       	  403376	       465.4 ns/op	     944 B/op	       3 allocs/op
+BenchmarkStackProcessor/short/serial              	   47062	      3440 ns/op	    3802 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial              	   44821	      4108 ns/op	    3800 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial              	   51370	      3856 ns/op	    3800 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-4            	   58216	      3057 ns/op	    3801 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-4            	   58706	      3171 ns/op	    3801 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-4            	   57514	      3246 ns/op	    3801 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-8            	   57126	      3232 ns/op	    3802 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-8            	   55242	      3345 ns/op	    3802 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/serial-8            	   61144	      3189 ns/op	    3802 B/op	      21 allocs/op
+BenchmarkStackProcessor/short/parallel            	   61208	      2849 ns/op	    2752 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel            	   57598	      3032 ns/op	    2752 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel            	   69924	      2900 ns/op	    2752 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-4          	   74260	      2811 ns/op	    2753 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-4          	   56226	      2989 ns/op	    2753 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-4          	   59514	      2966 ns/op	    2753 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-8          	   60740	      3086 ns/op	    2754 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-8          	   73432	      3161 ns/op	    2754 B/op	      19 allocs/op
+BenchmarkStackProcessor/short/parallel-8          	   58810	      3175 ns/op	    2754 B/op	      19 allocs/op
+BenchmarkStackProcessor/all/serial                	   59653	      3457 ns/op	    3914 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial                	   37977	      4418 ns/op	    3912 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial                	   41367	      4163 ns/op	    3912 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-4              	   54096	      3570 ns/op	    3913 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-4              	   53401	      3249 ns/op	    3913 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-4              	   54619	      3202 ns/op	    3913 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-8              	   54806	      3313 ns/op	    3914 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-8              	   53346	      3198 ns/op	    3914 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/serial-8              	   62814	      3161 ns/op	    3914 B/op	      23 allocs/op
+BenchmarkStackProcessor/all/parallel              	   62155	      3217 ns/op	    2864 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel              	   62421	      3061 ns/op	    2864 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel              	   61200	      3122 ns/op	    2864 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-4            	   58026	      2999 ns/op	    2865 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-4            	   55842	      2960 ns/op	    2865 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-4            	   64999	      3275 ns/op	    2865 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-8            	   55567	      2978 ns/op	    2867 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-8            	   57062	      3092 ns/op	    2867 B/op	      21 allocs/op
+BenchmarkStackProcessor/all/parallel-8            	   62526	      2871 ns/op	    2866 B/op	      21 allocs/op
+PASS
+ok  	github.com/chikilov/edot-go	11.771s

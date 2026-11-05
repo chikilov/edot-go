@@ -3,9 +3,9 @@ package edotgo
 
 import (
 	"context"
-	"fmt"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,14 +35,33 @@ func key(s sdktrace.ReadOnlySpan) spanKey {
 	return spanKey{s.SpanContext().TraceID(), s.SpanContext().SpanID()}
 }
 
-// stackProcessor captures the start callsite, then attaches it only to slow
-// spans at export. At most 4096 in-flight callsites are retained per SDK.
+const maxInflightStacks = 4096
+const maxStackDepth = 48
+
+// capturedStack retains only program counters until a span exceeds the duration
+// threshold. Entries are pooled and bounded, including pending captures.
+type capturedStack struct {
+	pcs [maxStackDepth]uintptr
+	n   int
+}
+
+// stackProcessor captures the start callsite, then symbolizes only slow spans.
+// Stack walking and formatting never execute while holding the map mutex.
 type stackProcessor struct {
 	sdktrace.SpanProcessor
 	min      time.Duration
 	patterns []string
 	mu       sync.Mutex
-	stacks   map[spanKey]string
+	stacks   map[spanKey]*capturedStack
+	slots    int // Stored entries plus captures reserved outside the mutex.
+	stopped  bool
+	pool     sync.Pool
+}
+
+func newStackProcessor(next sdktrace.SpanProcessor, min time.Duration, patterns []string) *stackProcessor {
+	p := &stackProcessor{SpanProcessor: next, min: min, patterns: append([]string(nil), patterns...), stacks: make(map[spanKey]*capturedStack)}
+	p.pool.New = func() any { return new(capturedStack) }
+	return p
 }
 
 func (p *stackProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) {
@@ -53,21 +72,43 @@ func (p *stackProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) 
 	}
 	if p.min >= 0 && s.SpanContext().IsSampled() {
 		p.mu.Lock()
-		if len(p.stacks) < 4096 {
-			p.stacks[key(s)] = callsite()
+		reserved := !p.stopped && p.slots < maxInflightStacks
+		if reserved {
+			p.slots++
 		}
 		p.mu.Unlock()
+		if reserved {
+			stack := p.pool.Get().(*capturedStack)
+			stack.n = runtime.Callers(2, stack.pcs[:])
+			p.mu.Lock()
+			stopped := p.stopped
+			if stopped {
+				p.slots--
+			} else {
+				p.stacks[key(s)] = stack
+			}
+			p.mu.Unlock()
+			if stopped {
+				p.pool.Put(stack)
+			}
+		}
 	}
 	p.SpanProcessor.OnStart(ctx, s)
 }
-func callsite() string {
-	pcs := make([]uintptr, 48)
-	n := runtime.Callers(3, pcs)
-	frames := runtime.CallersFrames(pcs[:n])
+
+func callsite(stack *capturedStack) string {
+	frames := runtime.CallersFrames(stack.pcs[:stack.n])
 	var b strings.Builder
+	b.Grow(stack.n * 80)
+	var line [20]byte
 	for {
 		f, more := frames.Next()
-		fmt.Fprintf(&b, "%s\n\t%s:%d\n", f.Function, f.File, f.Line)
+		b.WriteString(f.Function)
+		b.WriteString("\n\t")
+		b.WriteString(f.File)
+		b.WriteByte(':')
+		b.Write(strconv.AppendInt(line[:0], int64(f.Line), 10))
+		b.WriteByte('\n')
 		if !more {
 			break
 		}
@@ -82,32 +123,45 @@ type spanWithAttributes struct {
 
 func (s spanWithAttributes) Attributes() []attribute.KeyValue { return s.attrs }
 func (p *stackProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	p.mu.Lock()
-	stack := p.stacks[key(s)]
-	delete(p.stacks, key(s))
-	p.mu.Unlock()
-	if stack != "" && s.EndTime().Sub(s.StartTime()) >= p.min {
-		has := false
-		for _, a := range s.Attributes() {
-			if a.Key == "code.stacktrace" {
-				has = true
-				break
-			}
+	if p.min >= 0 && s.SpanContext().IsSampled() {
+		p.mu.Lock()
+		stack := p.stacks[key(s)]
+		if stack != nil {
+			delete(p.stacks, key(s))
+			p.slots--
 		}
-		if !has {
-			attrs := append([]attribute.KeyValue(nil), s.Attributes()...)
-			attrs = append(attrs, attribute.String("code.stacktrace", stack))
-			s = spanWithAttributes{s, attrs}
+		p.mu.Unlock()
+		if stack != nil {
+			if s.EndTime().Sub(s.StartTime()) >= p.min {
+				has := false
+				for _, a := range s.Attributes() {
+					if a.Key == "code.stacktrace" {
+						has = true
+						break
+					}
+				}
+				if !has {
+					attrs := make([]attribute.KeyValue, len(s.Attributes())+1)
+					copy(attrs, s.Attributes())
+					attrs[len(attrs)-1] = attribute.String("code.stacktrace", callsite(stack))
+					s = spanWithAttributes{s, attrs}
+				}
+			}
+			p.pool.Put(stack)
 		}
 	}
 	p.SpanProcessor.OnEnd(s)
 }
 func (p *stackProcessor) Shutdown(ctx context.Context) error {
-	err := p.SpanProcessor.Shutdown(ctx)
 	p.mu.Lock()
+	p.stopped = true
+	for _, stack := range p.stacks {
+		p.pool.Put(stack)
+	}
+	p.slots -= len(p.stacks)
 	clear(p.stacks)
 	p.mu.Unlock()
-	return err
+	return p.SpanProcessor.Shutdown(ctx)
 }
 
 type baggageLogProcessor struct {

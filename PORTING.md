@@ -12,7 +12,7 @@ Java 에이전트 전체와 동일한 기능/동작/성능을 보장하지 않�
 | `custom/.../ElasticDistroResource.java` | `sdk.go: New` | 공식 배포판 사칭 방지를 위해 distro 이름은 `edot-go-unofficial` |
 | `custom/.../compositesampling/DynamicCompositeParentBasedTraceIdRatioBasedSampler.java` | `sampler.go` | 원자적 delegate 교체·부모 결정 유지. Java consistent56/확률 tracestate 방식과는 다름 |
 | `custom/.../dynamicconfig/Blockable{Span,Metric,LogRecord}Exporter.java` | `exporters.go` | export-time gate, 신호별 수동 API |
-| Span Stacktrace 확장과 `custom/.../SpanStackTraceTest.java` | `processors.go: stackProcessor` | Go 시작 호출 스택과 기간 필터, 4096 in-flight cap. Java 프레임 필터와 동일하지 않음 |
+| Span Stacktrace 확장과 `custom/.../SpanStackTraceTest.java` | `processors.go: stackProcessor` | Go 시작 PC 수집·종료 시 지연 문자열화·버퍼 재사용, 4096 in-flight cap. Java 프레임 필터와 동일하지 않음 |
 | Java baggage processor | `processors.go` | 명시적 allowlist로 span/log에 복사. Go glob 문법 |
 | Java runtime telemetry | Go contrib runtime instrumentation | Go 런타임의 메트릭으로 대체, JVM 메트릭과 이름/의미 다름 |
 | Java HTTP 자동 계측 | `HTTPHandler`, `HTTPTransport` | Go OTel HTTP 계측을 명시적으로 적용 |

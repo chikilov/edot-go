@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -102,7 +102,7 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 			return nil, fmt.Errorf("create trace exporter: %w", e)
 		}
 		batch := sdktrace.NewBatchSpanProcessor(spanGate{exp, &s.traces})
-		traceOpts = append(traceOpts, sdktrace.WithSpanProcessor(&stackProcessor{SpanProcessor: batch, min: c.StacktraceMinDuration, patterns: append([]string(nil), c.SpanBaggageInclude...), stacks: make(map[spanKey]string)}))
+		traceOpts = append(traceOpts, sdktrace.WithSpanProcessor(newStackProcessor(batch, c.StacktraceMinDuration, c.SpanBaggageInclude)))
 	}
 	s.TracerProvider = sdktrace.NewTracerProvider(traceOpts...)
 	metricOpts := []sdkmetric.Option{sdkmetric.WithResource(r)}
