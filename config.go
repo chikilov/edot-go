@@ -12,9 +12,17 @@ import (
 )
 
 // Config describes the portable subset of EDOT Java configuration.
-// Exporter URLs, authentication, TLS, compression, and timeouts are read by
-// the upstream OTLP exporters from OTEL_EXPORTER_OTLP_* environment variables.
+// Explicit exporter settings override exporter environment variables without
+// mutating process environment or replacing global OpenTelemetry handlers.
 type Config struct {
+	OTLP           ExporterConfig
+	TraceExporter  ExporterConfig
+	MetricExporter ExporterConfig
+	LogExporter    ExporterConfig
+	// OnExportError runs synchronously on an exporter goroutine. Keep it fast;
+	// do not call ForceFlush/Shutdown or export telemetry from this callback.
+	// Different signals may invoke it concurrently. Panics are counted and recovered.
+	OnExportError         func(ExportError)
 	ServiceName           string
 	Sampler               string
 	SampleRatio           float64
@@ -137,10 +145,8 @@ func (c Config) validate() error {
 		if !enabled {
 			continue
 		}
-		switch protocolFor(signal) {
-		case "http/protobuf", "http/json", "grpc":
-		default:
-			return fmt.Errorf("%s: unsupported OTLP protocol; use http/protobuf, http/json, or grpc", signal)
+		if err := c.exporterFor(signal).validate(); err != nil {
+			return fmt.Errorf("%s: %w", signal, err)
 		}
 	}
 	if c.Metrics {

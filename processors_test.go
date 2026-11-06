@@ -81,6 +81,12 @@ func TestStackProcessorCapacityReused(t *testing.T) {
 	if slots != maxInflightStacks || stored != maxInflightStacks {
 		t.Fatalf("capacity: %d slots %d entries", slots, stored)
 	}
+	if p.skipped.Load() != 1 {
+		t.Fatal("missing capacity skip count")
+	}
+	if got := (&SDK{stack: p}).Diagnostics().Stack; got.InFlight != maxInflightStacks || got.SkippedAtCapacity != 1 {
+		t.Fatalf("bad stack diagnostics %+v", got)
+	}
 	spans[0].End()
 	_, replacement := tr.Start(context.Background(), "replacement")
 	p.mu.Lock()

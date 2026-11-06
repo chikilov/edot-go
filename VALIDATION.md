@@ -5,7 +5,7 @@ Environment: macOS arm64, Go 1.26.0 (automatically selected from go.mod).
 - `go test -race ./...`: PASS
 - `go vet ./...`: PASS
 - `go build ./...`: PASS
-- `go test -race -cover ./...`: PASS; SDK package coverage 84.6%; example coverage 0%.
+- `go test -race -cover ./...`: PASS; SDK package coverage 89.1%; example coverage 0%.
   Coverage run explicitly placed the Go 1.26.0 bin directory first in PATH;
   the host Go 1.25.5 binary otherwise caused a tool-version mismatch during
   coverage instrumentation of the example. Normal tests/build/vet passed with
@@ -29,7 +29,8 @@ three signal sending gates.
 
 No Elastic Cloud credentials were used. HTTP/JSON acceptance by Elastic Cloud
 was not tested. mTLS certificate loading is implemented but a full mutual-TLS
-handshake and gRPC TLS were not exercised by these tests. Managed OTLP ingestion, Kibana APM
+handshake was not exercised. Programmatic gRPC TLS with a configured CA is
+now covered by version 0.3.0 tests. Managed OTLP ingestion, Kibana APM
 rendering, profiling, remote central configuration, real workload overhead,
 resilience under prolonged outages, and non-macOS platforms were not validated.
 The example compiles but has not been exercised against an Elastic Cloud account.
@@ -51,3 +52,18 @@ Version 0.2.1 performance/reliability/CI work:
 
 Outages are simulated locally; these tests do not establish durability across
 process crashes, production load capacity, or availability during a real long outage.
+
+Version 0.3.0 configuration and diagnostics:
+- Full local race/coverage suite: PASS (86.541s); SDK coverage 89.1%.
+- Follow-up race tests cover gRPC deadline/canceled classification and stack-capacity diagnostics.
+- Explicit code settings override common/signal environment values without changing process environment.
+- HTTP/protobuf and HTTP/JSON code endpoints, complete signal URLs, header replacement,
+  empty-header clearing, compression disabling, and timeout override: PASS.
+- HTTP/protobuf, HTTP/JSON, and gRPC with code-provided TLS CA config: PASS.
+- Signal/common setting precedence, header snapshot copying, TLS config/CA pool cloning,
+  invalid settings and formatted-config redaction: PASS.
+- Per-instance success/failure/disabled-drop/item/in-flight counters, timestamps,
+  sanitized callbacks, callback-panic isolation, and concurrent snapshots: PASS.
+- Exact upstream batch queue depth and overflow totals remain unavailable, explicitly flagged in snapshots.
+- Cloudcheck command builds; no real Elastic Cloud credentials or account were used.
+  Cloud ingestion and Kibana UI verification remain pending local access configuration.

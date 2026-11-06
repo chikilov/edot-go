@@ -116,7 +116,7 @@ gRPC endpoint는 호스트와 포트를 지정하며 `/v1/*` 경로를 붙이지
 
 프로그램 설정은 `DefaultConfig()`를 수정한 뒤 `New(ctx, config)`에 전달하세요.
 이 경우 `ConfigFromEnv()`를 호출하지 않으면 위 Config 관련 환경변수는 적용되지 않습니다.
-OTLP exporter 환경변수와 resource 환경변수는 `New`에서도 읽습니다.
+OTLP exporter 환경변수와 resource 환경변수는 `New`에서도 읽으며, 명시한 exporter 코드 설정이 우선합니다.
 
 ## 프로토콜 선택
 
@@ -220,3 +220,89 @@ race/커버리지·vet·빌드를 검사하고 커버리지를 14일 보관합�
 측정해 아티팩트로 남깁니다. 공유 runner의 시간 편차로 빌드를 실패시키지는 않습니다.
 수집 데이터는 메모리 큐에 보관되므로 프로세스 종료나 큐 포화 시 유실될 수 있습니다.
 장기 보관과 재시작 복구가 필요하면 Collector의 persistent queue를 별도로 구성하세요.
+
+## 코드로 exporter 설정하기
+
+```go
+cfg := edotgo.DefaultConfig()
+cfg.ServiceName = "orders-go"
+cfg.OTLP = edotgo.ExporterConfig{
+    Protocol: "http/protobuf",
+    Endpoint: os.Getenv("ELASTIC_OTLP_ENDPOINT"),
+    Headers: map[string]string{
+        "Authorization": "ApiKey " + os.Getenv("ELASTIC_API_KEY"),
+    },
+    Timeout: 10 * time.Second,
+    Compression: "gzip",
+}
+// 필요하면 특정 신호만 별도로 설정합니다.
+cfg.LogExporter.Protocol = "http/json"
+cfg.LogExporter.Endpoint = "https://json-collector.example/v1/logs"
+cfg.OnExportError = func(event edotgo.ExportError) {
+    // event에는 신호, 입력 건수, export/canceled/deadline 분류만 있습니다.
+    // 이 콜백에서 telemetry를 다시 전송하거나 SDK를 flush/shutdown하지 마세요.
+}
+sdk, err := edotgo.New(ctx, cfg)
+```
+
+동일 필드의 우선순위는 **신호별 코드 → 공통 코드 → 신호별 환경변수 → 공통 환경변수 → 기본값**입니다.
+`TraceExporter`, `MetricExporter`, `LogExporter`가 신호별 설정입니다. 값이 없는 필드는 상속하며,
+Headers만 nil과 빈 map을 구분합니다. nil은 상속, 빈 map은 하위 우선순위의 모든 헤더 제거입니다.
+인증 헤더는 병합하지 않고 선택된 map 전체로 교체합니다. 코드의 헤더 값은 percent encoding 없이 전달합니다.
+
+공통 HTTP Endpoint는 base URL이며 신호별 `/v1/*` 경로가 붙습니다. 신호별 HTTP Endpoint는 완전한
+경로를 지정합니다. gRPC는 경로가 없는 http(s) URL을 사용합니다. userinfo·query·fragment는 허용하지 않습니다.
+`Timeout=0`과 빈 Protocol/Compression은 상속을 뜻합니다. 압축 해제는 `Compression="none"`입니다.
+커스텀 CA 또는 mTLS는 `TLSConfig: &tls.Config{...}`로 지정합니다. SDK는 TLS 설정과 CA pool을 복제하며,
+초기화 중 Config/map/TLS 자료를 동시에 수정하지 마세요. TLS 개인키와 signer 자체는 공유하는 불변 객체로 취급합니다.
+
+`New`는 환경변수를 변경하지 않으므로 서로 다른 설정의 SDK 인스턴스를 함께 만들 수 있습니다.
+`ConfigFromEnv()`는 먼저 환경변수를 검증합니다. 잘못된 환경 설정을 코드로 대체하려면
+`DefaultConfig()`부터 구성하세요. `%v`, `%+v`, `%#v`로 ExporterConfig를 출력하면 주소·인증 자료가 가려집니다.
+
+## 인스턴스별 진단
+
+```go
+snapshot := sdk.Diagnostics()
+// snapshot.Traces / Metrics / Logs:
+// ExportCalls, SuccessfulBatches, FailedBatches, SuccessfulItems,
+// ItemsInFailedBatches, DisabledDroppedItems, InFlightBatches,
+// LastSuccessAt, LastFailureAt, LastFailureKind
+```
+
+- 전송 호출은 upstream 내부 재시도가 끝난 최종 export 결과 단위입니다.
+- Items는 trace에서는 span, log에서는 record, metric에서는 data point 개수입니다.
+- `DisabledDroppedItems`는 SetSending*로 전송을 끈 상태에서 실제 폐기한 입력 건수입니다.
+- `ItemsInFailedBatches`는 실패한 호출에 들어 있던 건수입니다. 서버가 일부 수신했을 수 있으므로
+  확정적인 유실 건수나 partial-success의 거절 건수로 해석하면 안 됩니다.
+- `InFlightBatches`는 진행 중인 exporter 호출 수입니다. 내부 큐 깊이가 아닙니다.
+- `Stack`은 현재 보관/예약 슬롯, 상한, 상한 때문에 스택을 생략한 누적 건수를 제공합니다.
+  스택 생략은 span 자체의 폐기가 아닙니다.
+- upstream 배치 API는 큐 깊이/포화 폐기 누적값을 공개하지 않아 `QueueDepthAvailable`과
+  `QueueOverflowCountAvailable`은 false입니다. 진단이 전체 유실량을 집계한다고 보장하지 않습니다.
+
+각 카운터는 atomic이며 동시 조회가 가능하지만, snapshot 전체가 하나의 트랜잭션은 아닙니다.
+진단 API는 endpoint·헤더·payload·원문 오류를 저장하거나 출력하지 않으며 전역 OTel 오류 핸들러를 교체하지 않습니다.
+기존 upstream 오류 보고는 그대로 동작하므로 해당 로그의 민감 정보 처리 정책은 별도로 설정하세요.
+`OnExportError`는 신호별 exporter goroutine에서 동기 호출되며 여러 신호가 동시에 호출할 수 있습니다.
+콜백 panic은 회수하고 `CallbackPanics`에 누적합니다. 콜백은 빠르고 동시성에 안전하게 작성하세요.
+진단은 HTTP endpoint로 자동 공개되지 않으며 외부로 별도 전송하지 않습니다.
+
+## Elastic Cloud 확인 명령
+
+인증 정보를 로컬 환경에 설정하고 실행합니다. API Key를 저장소나 채팅에 넣지 마세요.
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT='https://<managed-otlp-endpoint>'
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+# OTEL_EXPORTER_OTLP_HEADERS는 로컬 secret 관리 도구나 shell에서 설정
+# Authorization=ApiKey%20<API_KEY> 형식
+
+go run ./examples/cloudcheck
+```
+
+명령은 `edot-go-cloudcheck` 서비스의 synthetic trace·metric·연결된 로그를 한 번 전송합니다.
+출력의 `trace_id`로 Kibana에서 검색해 데이터 표시와 로그 연결을 확인할 수 있습니다.
+전송 실패가 감지되면 종료 코드가 0이 아니며, 진단 JSON에는 인증 정보가 없습니다.
+Exporter 성공은 Kibana의 검색/집계/서비스 맵 표시 검증과 구분해야 합니다. 이 명령은 Kibana에
+접속하지 않으며 단일 서비스의 요청이므로 서비스 간 map 연결 검증은 별도 다중 서비스 테스트가 필요합니다.

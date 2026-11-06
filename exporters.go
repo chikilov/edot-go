@@ -15,36 +15,54 @@ import (
 // and does not interrupt a request that is already in flight.
 type spanGate struct {
 	sdktrace.SpanExporter
-	enabled *atomic.Bool
+	enabled     *atomic.Bool
+	diagnostics *diagnosticState
 }
 
 func (e spanGate) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	items := uint64(len(spans))
 	if !e.enabled.Load() {
+		e.diagnostics.dropped("traces", items)
 		return nil
 	}
-	return e.SpanExporter.ExportSpans(ctx, spans)
+	e.diagnostics.begin("traces")
+	err := e.SpanExporter.ExportSpans(ctx, spans)
+	e.diagnostics.finish("traces", items, err)
+	return err
 }
 
 type metricGate struct {
 	sdkmetric.Exporter
-	enabled *atomic.Bool
+	enabled     *atomic.Bool
+	diagnostics *diagnosticState
 }
 
 func (e metricGate) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
+	items := metricItems(data)
 	if !e.enabled.Load() {
+		e.diagnostics.dropped("metrics", items)
 		return nil
 	}
-	return e.Exporter.Export(ctx, data)
+	e.diagnostics.begin("metrics")
+	err := e.Exporter.Export(ctx, data)
+	e.diagnostics.finish("metrics", items, err)
+	return err
 }
 
 type logGate struct {
 	sdklog.Exporter
-	enabled *atomic.Bool
+	enabled     *atomic.Bool
+	diagnostics *diagnosticState
 }
 
 func (e logGate) Export(ctx context.Context, records []sdklog.Record) error {
+	items := uint64(len(records))
 	if !e.enabled.Load() {
+		e.diagnostics.dropped("logs", items)
 		return nil
 	}
-	return e.Exporter.Export(ctx, records)
+	e.diagnostics.begin("logs")
+	err := e.Exporter.Export(ctx, records)
+	e.diagnostics.finish("logs", items, err)
+	return err
 }

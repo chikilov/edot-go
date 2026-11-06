@@ -38,9 +38,11 @@ func signalEnv(signal, key string) string {
 	return os.Getenv("OTEL_EXPORTER_OTLP_" + key)
 }
 
-func jsonHTTPClient(signal string) (*http.Client, error) {
+func jsonHTTPClient(signal string, supplied ...exporterSettings) (*http.Client, error) {
+	settings := exporterSettingsFor(signal, supplied)
+
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	if file := signalEnv(signal, "CERTIFICATE"); file != "" {
+	if file := signalEnv(signal, "CERTIFICATE"); file != "" && settings.TLSConfig == nil {
 		pem, err := os.ReadFile(file)
 		if err != nil {
 			return nil, fmt.Errorf("%s CA certificate: %w", signal, err)
@@ -55,7 +57,7 @@ func jsonHTTPClient(signal string) (*http.Client, error) {
 		tlsConfig.RootCAs = pool
 	}
 	cert, key := signalEnv(signal, "CLIENT_CERTIFICATE"), signalEnv(signal, "CLIENT_KEY")
-	if cert != "" || key != "" {
+	if (cert != "" || key != "") && settings.TLSConfig == nil {
 		if cert == "" || key == "" {
 			return nil, fmt.Errorf("%s: client certificate and key must both be set", signal)
 		}
@@ -65,13 +67,19 @@ func jsonHTTPClient(signal string) (*http.Client, error) {
 		}
 		tlsConfig.Certificates = []tls.Certificate{pair}
 	}
+	if settings.TLSConfig != nil {
+		tlsConfig = settings.TLSConfig.Clone()
+	}
 	timeout := 10 * time.Second
-	if v := signalEnv(signal, "TIMEOUT"); v != "" {
+	if v := signalEnv(signal, "TIMEOUT"); v != "" && settings.Timeout == 0 {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n <= 0 || n > int64((1<<63-1)/time.Millisecond) {
 			return nil, fmt.Errorf("%s timeout: expected positive milliseconds", signal)
 		}
 		timeout = time.Duration(n) * time.Millisecond
+	}
+	if settings.Timeout > 0 {
+		timeout = settings.Timeout
 	}
 	base := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: true, MaxIdleConns: 100, IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ExpectContinueTimeout: time.Second, TLSClientConfig: tlsConfig}
 	return &http.Client{Timeout: timeout, Transport: &jsonTransport{base: base, signal: signal}}, nil

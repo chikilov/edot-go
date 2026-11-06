@@ -348,7 +348,7 @@ func (e *countingSpanExporter) Shutdown(context.Context) error { return nil }
 func TestSendingGate(t *testing.T) {
 	s := &SDK{}
 	exp := &countingSpanExporter{}
-	p := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanGate{exp, &s.traces}))
+	p := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanGate{exp, &s.traces, nil}))
 	defer p.Shutdown(context.Background())
 	_, span := p.Tracer("test").Start(context.Background(), "dropped")
 	span.End()
@@ -378,8 +378,8 @@ func TestMetricAndLogSendingGates(t *testing.T) {
 	s := &SDK{}
 	m := &metricSpy{}
 	l := &logSpy{}
-	mg := metricGate{m, &s.metrics}
-	lg := logGate{l, &s.logs}
+	mg := metricGate{m, &s.metrics, nil}
+	lg := logGate{l, &s.logs, nil}
 	if err := mg.Export(context.Background(), &metricdata.ResourceMetrics{}); err != nil {
 		t.Fatal(err)
 	}

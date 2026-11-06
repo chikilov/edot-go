@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -56,6 +57,7 @@ type stackProcessor struct {
 	slots    int // Stored entries plus captures reserved outside the mutex.
 	stopped  bool
 	pool     sync.Pool
+	skipped  atomic.Uint64
 }
 
 func newStackProcessor(next sdktrace.SpanProcessor, min time.Duration, patterns []string) *stackProcessor {
@@ -75,6 +77,8 @@ func (p *stackProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) 
 		reserved := !p.stopped && p.slots < maxInflightStacks
 		if reserved {
 			p.slots++
+		} else if !p.stopped {
+			p.skipped.Add(1)
 		}
 		p.mu.Unlock()
 		if reserved {

@@ -17,6 +17,8 @@ Java 에이전트 전체와 동일한 기능/동작/성능을 보장하지 않�
 | Java runtime telemetry | Go contrib runtime instrumentation | Go 런타임의 메트릭으로 대체, JVM 메트릭과 이름/의미 다름 |
 | Java HTTP 자동 계측 | `HTTPHandler`, `HTTPTransport` | Go OTel HTTP 계측을 명시적으로 적용 |
 | Java 로깅 프레임워크 연결 | `Logger`의 `otelslog` bridge | slog만 제공, 기존 stdout 로그 자동 수집 안 함 |
+| Go exporter 코드 설정 | `exporter_config.go`, `protocol.go` | 공통/신호별 endpoint·인증 헤더·protocol·timeout·압축·TLS, 환경변수보다 우선 |
+| Go 인스턴스 진단 | `diagnostics.go` | 전송 결과·전송 중지 폐기·스택 상한 생략·안전한 오류 콜백. 내부 배치 큐 수치는 미제공 |
 | upstream SDK lifecycle / batch | `sdk.go`, upstream Go SDK | flush·shutdown·부분 초기화 실패 정리, 기본 전역 부작용 없음 |
 | `ElasticUserAgentHeader.java` | upstream Go exporter User-Agent 유지 | Elastic 공식 agent로 식별하지 않음 |
 | JVM bytecode agent·runtime attach·bootstrap | 미구현 | Go 런타임 구조에 맞는 별도 설계 필요 |

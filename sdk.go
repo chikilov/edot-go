@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.2.1"
+const Version = "0.3.0"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -41,6 +41,8 @@ type SDK struct {
 	traces, metrics, logs atomic.Bool
 	once                  sync.Once
 	shutdownErr           error
+	diagnostics           *diagnosticState
+	stack                 *stackProcessor
 }
 
 func NewFromEnv(ctx context.Context) (*SDK, error) {
@@ -58,6 +60,7 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 		return nil, err
 	}
 	s := &SDK{sampler: newSampler(c.Sampler, c.SampleRatio), Propagator: propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})}
+	s.diagnostics = &diagnosticState{callback: c.OnExportError}
 	s.traces.Store(true)
 	s.metrics.Store(true)
 	s.logs.Store(true)
@@ -97,30 +100,31 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 	}
 	traceOpts := []sdktrace.TracerProviderOption{sdktrace.WithResource(r), sdktrace.WithSampler(s.sampler)}
 	if c.Traces {
-		exp, e := newTraceExporter(ctx)
+		exp, e := newTraceExporter(ctx, c.exporterFor("TRACES"))
 		if e != nil {
 			return nil, fmt.Errorf("create trace exporter: %w", e)
 		}
-		batch := sdktrace.NewBatchSpanProcessor(spanGate{exp, &s.traces})
-		traceOpts = append(traceOpts, sdktrace.WithSpanProcessor(newStackProcessor(batch, c.StacktraceMinDuration, c.SpanBaggageInclude)))
+		batch := sdktrace.NewBatchSpanProcessor(spanGate{exp, &s.traces, s.diagnostics})
+		s.stack = newStackProcessor(batch, c.StacktraceMinDuration, c.SpanBaggageInclude)
+		traceOpts = append(traceOpts, sdktrace.WithSpanProcessor(s.stack))
 	}
 	s.TracerProvider = sdktrace.NewTracerProvider(traceOpts...)
 	metricOpts := []sdkmetric.Option{sdkmetric.WithResource(r)}
 	if c.Metrics {
-		exp, e := newMetricExporter(ctx)
+		exp, e := newMetricExporter(ctx, c.exporterFor("METRICS"))
 		if e != nil {
 			return nil, fmt.Errorf("create metric exporter: %w", e)
 		}
-		metricOpts = append(metricOpts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricGate{exp, &s.metrics})))
+		metricOpts = append(metricOpts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricGate{exp, &s.metrics, s.diagnostics})))
 	}
 	s.MeterProvider = sdkmetric.NewMeterProvider(metricOpts...)
 	logOpts := []sdklog.LoggerProviderOption{sdklog.WithResource(r)}
 	if c.Logs {
-		exp, e := newLogExporter(ctx)
+		exp, e := newLogExporter(ctx, c.exporterFor("LOGS"))
 		if e != nil {
 			return nil, fmt.Errorf("create log exporter: %w", e)
 		}
-		batch := sdklog.NewBatchProcessor(logGate{exp, &s.logs})
+		batch := sdklog.NewBatchProcessor(logGate{exp, &s.logs, s.diagnostics})
 		logOpts = append(logOpts, sdklog.WithProcessor(&baggageLogProcessor{Processor: batch, patterns: append([]string(nil), c.LogBaggageInclude...)}))
 	}
 	s.LoggerProvider = sdklog.NewLoggerProvider(logOpts...)

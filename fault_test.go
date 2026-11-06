@@ -35,11 +35,14 @@ import (
 // Exercise the production exporter factories directly so async SDK error
 // reporting cannot hide a failed export from the assertions.
 func faultSender(t *testing.T, signal string) func(context.Context) error {
+	return makeFaultSender(t, signal)
+}
+func makeFaultSender(t *testing.T, signal string, supplied ...exporterSettings) func(context.Context) error {
 	t.Helper()
 	ctx := context.Background()
 	switch signal {
 	case "TRACES":
-		e, err := newTraceExporter(ctx)
+		e, err := newTraceExporter(ctx, supplied...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +50,7 @@ func faultSender(t *testing.T, signal string) func(context.Context) error {
 		s := tracetest.SpanStub{Name: "fault-test", StartTime: time.Now(), EndTime: time.Now(), Resource: resource.Empty(), SpanContext: trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{1}, TraceFlags: trace.FlagsSampled})}.Snapshot()
 		return func(ctx context.Context) error { return e.ExportSpans(ctx, []sdktrace.ReadOnlySpan{s}) }
 	case "METRICS":
-		e, err := newMetricExporter(ctx)
+		e, err := newMetricExporter(ctx, supplied...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +58,7 @@ func faultSender(t *testing.T, signal string) func(context.Context) error {
 		data := &sdkmetric.ResourceMetrics{Resource: resource.Empty(), ScopeMetrics: []sdkmetric.ScopeMetrics{{Metrics: []sdkmetric.Metrics{{Name: "fault.test", Data: sdkmetric.Sum[int64]{Temporality: sdkmetric.DeltaTemporality, IsMonotonic: true, DataPoints: []sdkmetric.DataPoint[int64]{{Value: 1, Time: time.Now()}}}}}}}}
 		return func(ctx context.Context) error { return e.Export(ctx, data) }
 	case "LOGS":
-		e, err := newLogExporter(ctx)
+		e, err := newLogExporter(ctx, supplied...)
 		if err != nil {
 			t.Fatal(err)
 		}
