@@ -306,3 +306,18 @@ go run ./examples/cloudcheck
 전송 실패가 감지되면 종료 코드가 0이 아니며, 진단 JSON에는 인증 정보가 없습니다.
 Exporter 성공은 Kibana의 검색/집계/서비스 맵 표시 검증과 구분해야 합니다. 이 명령은 Kibana에
 접속하지 않으며 단일 서비스의 요청이므로 서비스 간 map 연결 검증은 별도 다중 서비스 테스트가 필요합니다.
+
+## 로컬 Elastic 클러스터
+
+Cloud 계정 없이 Elasticsearch·Kibana·EDOT Collector를 함께 띄우고 검증할 수 있습니다.
+
+```bash
+./deploy/local/start.sh
+python3 deploy/local/verify.py
+./deploy/local/stop.sh
+```
+
+시작은 Basic 라이선스와 localhost 전용 포트를 사용하며, 중지는 데이터 볼륨을 보존합니다.
+인증 정보는 Git에서 제외한 `deploy/local/.env`에만 저장합니다.
+설명과 접속 주소는 [로컬 구성 안내](deploy/local/README.md)를 참고하세요.
+로컬 테스트는 Managed OTLP의 Cloud 인증/TLS 경로나 라이선스가 필요한 Service Map 화면 검증을 대체하지 않습니다.

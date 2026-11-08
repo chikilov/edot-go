@@ -2,3 +2,6 @@
 *.test
 coverage.out
 /httpserver
+
+__pycache__/
+*.pyc

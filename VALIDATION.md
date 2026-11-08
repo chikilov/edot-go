@@ -67,3 +67,10 @@ Version 0.3.0 configuration and diagnostics:
 - Exact upstream batch queue depth and overflow totals remain unavailable, explicitly flagged in snapshots.
 - Cloudcheck command builds; no real Elastic Cloud credentials or account were used.
   Cloud ingestion and Kibana UI verification remain pending local access configuration.
+
+Local Elastic integration — 2026-11-09:
+- Elasticsearch/Kibana/EDOT 9.5.6-arm64 started successfully with Basic license.
+- All three protocols passed real ingestion and frontend/backend correlation checks.
+- Kibana overall availability and APM service inventory were verified via API.
+- Detailed synthetic-data assertions and limitations are in deploy/local/RESULTS.md.
+- Managed Cloud authentication/TLS and licensed Service Map UI remain unverified.

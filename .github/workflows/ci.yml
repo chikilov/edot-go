@@ -44,6 +44,13 @@ jobs:
         run: |
           go mod tidy -diff
           go mod verify
+      - name: Validate local stack configuration
+        if: runner.os == 'Linux'
+        run: |
+          python3 deploy/local/prepare.py
+          python3 -m py_compile deploy/local/prepare.py deploy/local/verify.py
+          docker compose --project-directory deploy/local config --quiet
+          git check-ignore deploy/local/.env
       - name: Test with race detector
         run: go test -race -coverprofile=coverage.out -timeout=3m ./...
       - name: Vet and build

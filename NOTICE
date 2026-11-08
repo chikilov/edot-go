@@ -18,3 +18,9 @@ Copyright The OpenTelemetry Authors, licensed under Apache-2.0.
 Transitive dependencies retain their respective notices and licenses in the
 Go module cache. No Java JVM agent, ASM, async-profiler, or okhttp code is
 included in this implementation.
+
+Local Docker Compose configuration derived from elastic/start-local,
+Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V., Apache-2.0.
+Source revision: 0a56d370042dc6d5032026b0173c93e94f2f1676.
+Modifications: loopback-only collector ports, Basic license, Kibana telemetry
+opt-out, random-secret preparation, and non-destructive stop command.
