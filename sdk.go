@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.3.0"
+const Version = "0.3.1"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -185,16 +185,35 @@ func (s *SDK) HTTPTransport(base http.RoundTripper) http.RoundTripper {
 	return otelhttp.NewTransport(base, otelhttp.WithTracerProvider(s.TracerProvider), otelhttp.WithMeterProvider(s.MeterProvider), otelhttp.WithPropagators(s.Propagator))
 }
 
+// ForceFlush attempts all initialized providers concurrently under the same
+// deadline. A stalled signal cannot consume the other signals' flush budget.
+// On deadline expiry, upstream flushes may still be completing cancellation.
 func (s *SDK) ForceFlush(ctx context.Context) error {
-	var errs []error
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var flushes []func(context.Context) error
 	if s.TracerProvider != nil {
-		errs = append(errs, s.TracerProvider.ForceFlush(ctx))
+		flushes = append(flushes, s.TracerProvider.ForceFlush)
 	}
 	if s.MeterProvider != nil {
-		errs = append(errs, s.MeterProvider.ForceFlush(ctx))
+		flushes = append(flushes, s.MeterProvider.ForceFlush)
 	}
 	if s.LoggerProvider != nil {
-		errs = append(errs, s.LoggerProvider.ForceFlush(ctx))
+		flushes = append(flushes, s.LoggerProvider.ForceFlush)
+	}
+	results := make(chan error, len(flushes))
+	for _, flush := range flushes {
+		go func(fn func(context.Context) error) { results <- fn(ctx) }(flush)
+	}
+	var errs []error
+	for range flushes {
+		select {
+		case err := <-results:
+			errs = append(errs, err)
+		case <-ctx.Done():
+			return errors.Join(append(errs, ctx.Err())...)
+		}
 	}
 	return errors.Join(errs...)
 }

@@ -4,7 +4,7 @@ package edotgo
 // Metrics/logs HTTP exporters in the pinned Go SDK only support protobuf.
 // This transport adapts their requests and successful responses at the HTTP
 // boundary, retaining upstream resource conversion, retry and partial-success
-// handling. Traces use the upstream native JSON implementation instead.
+// handling. Traces retain native request encoding and use response validation.
 import (
 	"bytes"
 	"compress/gzip"
@@ -25,6 +25,7 @@ import (
 
 	logpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -124,20 +125,24 @@ func (t *jsonTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	var msg proto.Message
-	switch t.signal {
-	case "METRICS":
-		msg = &metricpb.ExportMetricsServiceRequest{}
-	case "LOGS":
-		msg = &logpb.ExportLogsServiceRequest{}
-	default:
-		return nil, fmt.Errorf("unsupported JSON signal")
-	}
-	if err = proto.Unmarshal(data, msg); err != nil {
-		return nil, err
-	}
-	data, err = marshalOTLPJSON(msg)
-	if err != nil {
-		return nil, err
+	// Traces already use the upstream native JSON encoder. Only metrics/logs
+	// need request conversion; all signals share response validation.
+	if t.signal != "TRACES" {
+		switch t.signal {
+		case "METRICS":
+			msg = &metricpb.ExportMetricsServiceRequest{}
+		case "LOGS":
+			msg = &logpb.ExportLogsServiceRequest{}
+		default:
+			return nil, fmt.Errorf("unsupported JSON signal")
+		}
+		if err = proto.Unmarshal(data, msg); err != nil {
+			return nil, err
+		}
+		data, err = marshalOTLPJSON(msg)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(data) > maxJSONBody {
 		return nil, fmt.Errorf("OTLP JSON request exceeds 16 MiB")
@@ -168,7 +173,7 @@ func (t *jsonTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	// Let upstream retry/status handling inspect failure responses unchanged.
 	contentType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || contentType != "application/json" {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp, nil
 	}
 	defer resp.Body.Close()
@@ -176,21 +181,34 @@ func (t *jsonTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(bytes.TrimSpace(data)) > 0 {
+	if len(data) > 0 {
 		switch t.signal {
+		case "TRACES":
+			msg = &tracepb.ExportTraceServiceResponse{}
 		case "METRICS":
 			msg = &metricpb.ExportMetricsServiceResponse{}
 		case "LOGS":
 			msg = &logpb.ExportLogsServiceResponse{}
 		}
-		if err = (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, msg); err != nil {
-			return nil, fmt.Errorf("OTLP JSON response: %w", err)
-		}
-		data, err = proto.Marshal(msg)
-		if err != nil {
-			return nil, err
+		switch contentType {
+		case "application/json":
+			if err = (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, msg); err != nil {
+				return nil, fmt.Errorf("OTLP JSON response: %w", err)
+			}
+			data, err = proto.Marshal(msg)
+			if err != nil {
+				return nil, err
+			}
+		case "application/x-protobuf":
+			// Retain interoperability with receivers returning a binary response.
+			if err = proto.Unmarshal(data, msg); err != nil {
+				return nil, fmt.Errorf("OTLP protobuf response: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("unexpected OTLP response content type")
 		}
 	}
+
 	resp.Body = io.NopCloser(bytes.NewReader(data))
 	resp.ContentLength = int64(len(data))
 	resp.Header = resp.Header.Clone()

@@ -4,6 +4,7 @@ package edotgo
 import (
 	"crypto/tls"
 	"fmt"
+	"golang.org/x/net/http/httpguts"
 	"maps"
 	"net/url"
 	"strings"
@@ -127,10 +128,41 @@ func (s exporterSettings) validate() error {
 			return fmt.Errorf("TLSConfig requires an https endpoint")
 		}
 	}
+	seen := make(map[string]struct{}, len(s.Headers))
 	for k, v := range s.Headers {
-		if k == "" || strings.ContainsAny(k, "()<>@,;:\\\"/[]?={} \t\r\n") || strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("invalid exporter header")
+		name := strings.ToLower(k)
+		if _, exists := seen[name]; exists {
+			return fmt.Errorf("duplicate exporter header name")
+		}
+		seen[name] = struct{}{}
+		if s.Protocol == "grpc" {
+			if !validGRPCHeader(k, v) {
+				return fmt.Errorf("invalid gRPC exporter header")
+			}
+		} else if !httpguts.ValidHeaderFieldName(k) || !httpguts.ValidHeaderFieldValue(v) {
+			return fmt.Errorf("invalid HTTP exporter header")
 		}
 	}
 	return nil
+}
+
+func validGRPCHeader(name, value string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+			return false
+		}
+	}
+	// gRPC binary metadata is raw bytes; the transport performs base64 encoding.
+	if strings.HasSuffix(strings.ToLower(name), "-bin") {
+		return true
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] > 0x7e {
+			return false
+		}
+	}
+	return true
 }

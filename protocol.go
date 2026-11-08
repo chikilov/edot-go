@@ -3,8 +3,9 @@ package edotgo
 
 import (
 	"context"
-	"google.golang.org/grpc/credentials"
 	"net/http"
+
+	"google.golang.org/grpc/credentials"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -69,6 +70,19 @@ func newTraceExporter(ctx context.Context, supplied ...exporterSettings) (sdktra
 			compression = otlptracehttp.GzipCompression
 		}
 		opts = append(opts, otlptracehttp.WithCompression(compression))
+	}
+	if s.Protocol == "http/json" {
+		client, err := jsonHTTPClient("TRACES", s)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, otlptracehttp.WithHTTPClient(client))
+		exp, err := otlptracehttp.New(ctx, opts...)
+		if err != nil {
+			client.CloseIdleConnections()
+			return nil, err
+		}
+		return &jsonTraceExporter{SpanExporter: exp, client: client}, nil
 	}
 	return otlptracehttp.New(ctx, opts...)
 }
@@ -221,4 +235,14 @@ type jsonLogExporter struct {
 func (e *jsonLogExporter) Shutdown(ctx context.Context) error {
 	defer e.client.CloseIdleConnections()
 	return e.Exporter.Shutdown(ctx)
+}
+
+type jsonTraceExporter struct {
+	sdktrace.SpanExporter
+	client *http.Client
+}
+
+func (e *jsonTraceExporter) Shutdown(ctx context.Context) error {
+	defer e.client.CloseIdleConnections()
+	return e.SpanExporter.Shutdown(ctx)
 }

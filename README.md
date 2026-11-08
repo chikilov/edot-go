@@ -152,8 +152,8 @@ export OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=http/json
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://collector:4318/v1/logs
 ```
 
-트레이스 JSON과 모든 gRPC 전송은 공식 Go exporter를 사용합니다. 고정 버전에서 메트릭·로그
-HTTP exporter는 binary protobuf 전용이라, 이 두 신호는 HTTP 경계에서 OTLP JSON으로 변환합니다.
+트레이스 JSON 인코딩과 모든 gRPC 전송은 공식 Go exporter를 사용합니다. 고정 버전에서 메트릭·로그
+HTTP exporter는 binary protobuf 전용이라, 이 두 신호는 HTTP 경계에서 OTLP JSON으로 변환합니다. 세 JSON 신호 모두 응답 검증 계층을 거칩니다.
 기존 exporter의 배치·재시도·partial-success 처리를 유지하며, TLS CA/mTLS 인증서·인증 헤더·
 신호별 timeout·gzip을 처리합니다. JSON 요청/응답의 디코딩된 본문은 각각 16 MiB로 제한됩니다.
 JSON에서는 trace/span ID를 hex, enum을 숫자로 표현하고 64비트 정수 정밀도를 보존합니다.
@@ -321,3 +321,23 @@ python3 deploy/local/verify.py
 인증 정보는 Git에서 제외한 `deploy/local/.env`에만 저장합니다.
 설명과 접속 주소는 [로컬 구성 안내](deploy/local/README.md)를 참고하세요.
 로컬 테스트는 Managed OTLP의 Cloud 인증/TLS 경로나 라이선스가 필요한 Service Map 화면 검증을 대체하지 않습니다.
+
+## 전송 경계 조건과 flush
+
+코드로 지정한 `ExporterConfig.Headers`는 초기화 시 프로토콜별로 검사합니다.
+HTTP는 RFC 형식의 헤더 이름/값을, gRPC는 ASCII metadata 이름과 non-binary 값 형식을 요구합니다.
+gRPC의 `-bin` metadata는 raw bytes 문자열을 허용하며 전송 계층이 base64 인코딩합니다.
+대소문자만 다른 동일 헤더를 한 map에 중복 지정하면 인증 값 선택이 모호하므로 오류를 반환합니다.
+이 검사는 코드 설정에 적용됩니다. 환경변수 헤더 파싱은 upstream exporter의 동작을 따릅니다.
+검증 오류에 헤더 값은 포함하지 않습니다.
+
+HTTP/JSON exporter는 non-empty 2xx 응답이 JSON 또는 유효한 protobuf인지 검사합니다.
+HTML 로그인 페이지나 잘못된 Content-Type을 성공으로 집계하지 않으며 partial-success 거절도 보고합니다.
+호환성을 위해 빈 성공 응답과 binary protobuf 응답을 받는 동작은 유지합니다.
+트레이스 요청의 JSON 인코딩은 계속 공식 exporter가 담당합니다.
+
+`ForceFlush(ctx)`는 세 provider에 같은 deadline으로 병렬 flush를 요청합니다.
+느린 트레이스 전송이 메트릭/로그의 flush 시간을 먼저 소모하지 않습니다.
+모든 결과를 모으거나 deadline 도달 시 반환하며, 이미 진행 중인 upstream 취소 처리는
+반환 뒤 마무리될 수 있습니다. flush 반환만으로 서버의 영구 저장이나 모든 비동기 전송 성공이
+보장되지는 않으므로 `Diagnostics()`와 함께 확인하세요. `Shutdown`의 기존 계약은 유지합니다.

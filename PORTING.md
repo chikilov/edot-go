@@ -31,7 +31,7 @@ Java 에이전트 전체와 동일한 기능/동작/성능을 보장하지 않�
 | 선언형 YAML·SPI 확장·Java system properties | 미구현 | Go Config/API 및 명시된 환경변수만 지원 |
 | OTLP gRPC | `protocol.go` | 공식 Go trace/metric/log gRPC exporter, 인증 메타데이터·TLS 지원 |
 | OTLP HTTP/protobuf | `protocol.go` | 기존 기본값 유지, 공식 Go HTTP exporter |
-| OTLP HTTP/JSON | `protocol.go`, `json_transport.go` | 트레이스는 native JSON, 메트릭·로그는 HTTP 변환 계층. OTLP hex ID·숫자 enum·64비트 정수 보존 |
+| OTLP HTTP/JSON | `protocol.go`, `json_transport.go` | 트레이스는 native JSON 인코딩, 메트릭·로그는 HTTP 변환 계층. 세 신호 모두 응답 검증. OTLP hex ID·숫자 enum·64비트 정수 보존 |
 
 ## 사용한 기반 라이브러리
 

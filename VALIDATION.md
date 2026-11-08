@@ -74,3 +74,18 @@ Local Elastic integration — 2026-11-09:
 - Kibana overall availability and APM service inventory were verified via API.
 - Detailed synthetic-data assertions and limitations are in deploy/local/RESULTS.md.
 - Managed Cloud authentication/TLS and licensed Service Map UI remain unverified.
+
+Version 0.3.1 hardening — 2026-11-09:
+- Regression tests first reproduced invalid programmatic header acceptance,
+  HTML/non-JSON success acknowledgement, and metrics/log starvation during a blocked trace flush.
+- Full race/coverage suite passed (79.005s; 88.8% SDK coverage at that run).
+- Additional focused race tests passed for protobuf-response compatibility and partial rejection across all signals.
+- Real gRPC binary metadata round trips, case-insensitive duplicate header rejection,
+  HTTP token/control-byte validation, and shared-deadline flush fairness are covered.
+- `go vet ./...`, `go build ./...`, `go mod tidy -diff`, and `go mod verify`: PASS.
+- `deploy/local/verify.py`: PASS against the running Elastic 9.5.6 stack after changes;
+  all protocol trace/metric/log correlation checks passed.
+- Kibana Discover UI showed a synthetic ERROR log, its trace ID, and a linked waterfall
+  with frontend/backend services and three spans. Screenshot retained locally outside the repository.
+- Code header validation does not replace upstream environment header parsing.
+  Cloud Managed OTLP and licensed Service Map UI remain outside this verification.
