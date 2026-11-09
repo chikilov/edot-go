@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Reject programmatic endpoints with empty hosts, empty/out-of-range ports,
+  or a bare query delimiter before constructing exporters. Error messages
+  do not contain the endpoint. IPv6 and default ports remain supported.
+
 ## 0.3.2
 
 - Shut down providers concurrently so a stalled trace exporter does not consume

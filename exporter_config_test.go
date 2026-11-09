@@ -55,6 +55,8 @@ func TestCodeConfigurationPrecedenceAndRedaction(t *testing.T) {
 func TestInvalidCodeExporterSettings(t *testing.T) {
 	for _, bad := range []ExporterConfig{
 		{Protocol: "binary"}, {Endpoint: "not-a-url"}, {Endpoint: "https://user:password@example.com"},
+		{Endpoint: "https://:4318"}, {Endpoint: "https://example.com:65536"},
+		{Endpoint: "https://example.com:0"}, {Endpoint: "https://example.com:"}, {Endpoint: "https://example.com/?"},
 		{Endpoint: "https://example.com/?token=secret"}, {Endpoint: "https://example.com/#secret"},
 		{Protocol: "grpc", Endpoint: "https://example.com/v1/traces"}, {Timeout: -time.Second},
 		{Compression: "brotli"}, {Headers: map[string]string{"Authorization": "bad\r\nheader"}},
@@ -256,5 +258,24 @@ func TestProgrammaticTimeoutAndEmptyHeaders(t *testing.T) {
 	send := configuredFaultSender(t, "LOGS", c.exporterFor("LOGS"))
 	if err := send(context.Background()); err != nil {
 		t.Fatalf("code timeout did not override environment: %v", err)
+	}
+}
+
+func TestEndpointAuthorityValidation(t *testing.T) {
+	for _, protocol := range []string{"http/protobuf", "http/json", "grpc"} {
+		for _, endpoint := range []string{"https://:4318", "https://example.com:65536", "https://example.com:0", "https://example.com:", "https://example.com/?"} {
+			t.Run(protocol+"/"+endpoint, func(t *testing.T) {
+				s := exporterSettings{ExporterConfig: ExporterConfig{Protocol: protocol, Endpoint: endpoint}}
+				if err := s.validate(); err == nil {
+					t.Fatal("accepted invalid endpoint")
+				}
+			})
+		}
+		for _, endpoint := range []string{"https://localhost", "http://localhost:4318", "https://[::1]:4318", "https://example.com:65535"} {
+			s := exporterSettings{ExporterConfig: ExporterConfig{Protocol: protocol, Endpoint: endpoint}}
+			if err := s.validate(); err != nil {
+				t.Fatalf("valid endpoint rejected: %v", err)
+			}
+		}
 	}
 }

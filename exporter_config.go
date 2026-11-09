@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"maps"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -118,8 +119,19 @@ func (s exporterSettings) validate() error {
 	}
 	if s.Endpoint != "" {
 		u, err := url.Parse(s.Endpoint)
-		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("endpoint must be an http(s) URL without userinfo, query, or fragment")
+		if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return fmt.Errorf("endpoint must be an http(s) URL with a host and without userinfo, query, or fragment")
+		}
+		// url.Parse accepts empty ports and ports outside the TCP range.
+		// Reject them before constructing asynchronous exporters.
+		if strings.HasSuffix(u.Host, ":") {
+			return fmt.Errorf("endpoint port must be between 1 and 65535")
+		}
+		if port := u.Port(); port != "" {
+			n, err := strconv.Atoi(port)
+			if err != nil || n < 1 || n > 65535 {
+				return fmt.Errorf("endpoint port must be between 1 and 65535")
+			}
 		}
 		if s.Protocol == "grpc" && u.Path != "" && u.Path != "/" {
 			return fmt.Errorf("gRPC endpoint must not have a path")

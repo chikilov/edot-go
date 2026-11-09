@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.3.2"
+const Version = "0.3.3"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.

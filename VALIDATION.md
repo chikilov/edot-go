@@ -100,3 +100,13 @@ Version 0.3.2 shutdown hardening — 2026-11-09:
   including per-protocol 6 traces, 18 spans, 12 correlated logs and metric checks.
 - Shutdown still waits for provider calls and caches the first caller result;
   it does not guarantee persistence or retry after a timeout.
+
+Version 0.3.3 endpoint validation — 2026-11-09:
+- Regression tests reproduced acceptance of missing hosts, empty ports, ports 0/65536,
+  and bare query delimiters across all three protocols.
+- Invalid programmatic configuration now fails during New, before exporters start.
+- Valid IPv6, omitted ports, and port 65535 remain accepted.
+- Focused race tests covering endpoint validation and programmatic HTTP/gRPC export: PASS.
+- Full `go test -race -timeout=3m ./...`: PASS (72.173s).
+- `go vet ./...`, `go build ./...`, and diff whitespace checks: PASS.
+- No transport changes; environment endpoint parsing remains upstream behavior.
