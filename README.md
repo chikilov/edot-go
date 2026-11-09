@@ -392,3 +392,7 @@ queue-full 드롭을 읽을 수 있습니다. 실험적 관측 활성화와 glob
 자세한 사용법은 [QUEUE_DIAGNOSTICS.md](QUEUE_DIAGNOSTICS.md)를 참고하세요.
 
 태그를 고정한 설치·업그레이드와 source 배포 파일 검증은 [RELEASING.md](RELEASING.md)에 있습니다.
+
+
+Elastic 8.x / 9.x / Serverless별 설정 예시와 버전 검증은
+[ELASTIC_COMPATIBILITY.md](ELASTIC_COMPATIBILITY.md)에 구분했습니다.

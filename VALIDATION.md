@@ -156,3 +156,16 @@ Version 0.5.0 queue diagnostics and release — 2026-11-10:
   repeated source packaging checksums on the release commit.
 - Release packaging reads git archive, rejecting tracked private .env/IDE/cache
   files. Untracked personal files are never included.
+
+Version-aware Cloud tooling (unreleased) — 2026-11-10:
+- Separate profiles for Hosted 8.x APM, 9.0-9.5.2 Managed OTLP,
+  9.5.3+ Managed OTLP and unversioned Serverless.
+- CLI/file metadata selection, offline profile listing/preflight, observed Stack
+  version reporting and mismatch-before-export gate verified.
+- 15 offline tests PASS, including 9.5.2/9.5.3 boundary, invalid combinations,
+  template parsing, metadata overrides, credential redaction and unknown probes.
+- Actual Cloud: declared and observed 8.19.16 matched; auto APM route selected.
+  HTTP/protobuf and gRPC exports, direct Elasticsearch storage and trace/log
+  correlation PASS. No local credentials or endpoint files were changed.
+- 9.x/Serverless profiles are documentation-based, not Cloud integration claims.
+  No Go SDK transport/API changes; existing release tags remain immutable.

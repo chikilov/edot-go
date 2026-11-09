@@ -1,5 +1,9 @@
 # Elastic Cloud 접속 준비
 
+버전별 프로필·검증 상태는 [ELASTIC_COMPATIBILITY.md](../../ELASTIC_COMPATIBILITY.md)를 먼저 확인하세요.
+`--elastic-version 8.19.16` 또는 파일의 `ELASTIC_STACK_VERSION`으로 경로를 구분할 수 있습니다.
+실제 `.env`는 자동으로 수정하지 않습니다.
+
 ## Hosted 8.19의 APM endpoint
 
 Managed OTLP 항목이 없는 8.x 배포는 기존 APM endpoint로 검증합니다.

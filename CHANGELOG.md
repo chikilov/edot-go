@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add version-aware Cloud verification profiles and configuration examples for Hosted
+  8.x APM, 9.0–9.5.2 Managed OTLP, 9.5.3+ Managed OTLP and Serverless.
+- Report declared/observed versions and stop before export on mismatches; preserve
+  version-neutral SDK behavior and existing explicit APM configuration.
+
 ## 0.5.0
 
 - Parse pinned upstream experimental SDK queue metrics into sanitized processor
