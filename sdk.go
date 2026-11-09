@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.3.3"
+const Version = "0.4.0"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -104,7 +104,7 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 		if e != nil {
 			return nil, fmt.Errorf("create trace exporter: %w", e)
 		}
-		batch := sdktrace.NewBatchSpanProcessor(spanGate{exp, &s.traces, s.diagnostics})
+		batch := sdktrace.NewBatchSpanProcessor(spanGate{exp, &s.traces, s.diagnostics}, c.TraceBatch.traceOptions()...)
 		s.stack = newStackProcessor(batch, c.StacktraceMinDuration, c.SpanBaggageInclude)
 		traceOpts = append(traceOpts, sdktrace.WithSpanProcessor(s.stack))
 	}
@@ -115,7 +115,7 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 		if e != nil {
 			return nil, fmt.Errorf("create metric exporter: %w", e)
 		}
-		metricOpts = append(metricOpts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricGate{exp, &s.metrics, s.diagnostics})))
+		metricOpts = append(metricOpts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricGate{exp, &s.metrics, s.diagnostics}, c.MetricReader.options()...)))
 	}
 	s.MeterProvider = sdkmetric.NewMeterProvider(metricOpts...)
 	logOpts := []sdklog.LoggerProviderOption{sdklog.WithResource(r)}
@@ -124,7 +124,7 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 		if e != nil {
 			return nil, fmt.Errorf("create log exporter: %w", e)
 		}
-		batch := sdklog.NewBatchProcessor(logGate{exp, &s.logs, s.diagnostics})
+		batch := sdklog.NewBatchProcessor(logGate{exp, &s.logs, s.diagnostics}, c.LogBatch.logOptions()...)
 		logOpts = append(logOpts, sdklog.WithProcessor(&baggageLogProcessor{Processor: batch, patterns: append([]string(nil), c.LogBaggageInclude...)}))
 	}
 	s.LoggerProvider = sdklog.NewLoggerProvider(logOpts...)

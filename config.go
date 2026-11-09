@@ -19,6 +19,9 @@ type Config struct {
 	TraceExporter  ExporterConfig
 	MetricExporter ExporterConfig
 	LogExporter    ExporterConfig
+	TraceBatch     BatchConfig
+	LogBatch       BatchConfig
+	MetricReader   MetricReaderConfig
 	// OnExportError runs synchronously on an exporter goroutine. Keep it fast;
 	// do not call ForceFlush/Shutdown or export telemetry from this callback.
 	// Different signals may invoke it concurrently. Panics are counted and recovered.
@@ -140,6 +143,21 @@ func (c Config) validate() error {
 	}
 	if c.Disabled {
 		return nil
+	}
+	if c.Traces {
+		if err := c.TraceBatch.validate(); err != nil {
+			return fmt.Errorf("TRACES: %w", err)
+		}
+	}
+	if c.Logs {
+		if err := c.LogBatch.validate(); err != nil {
+			return fmt.Errorf("LOGS: %w", err)
+		}
+	}
+	if c.Metrics {
+		if err := c.MetricReader.validate(); err != nil {
+			return fmt.Errorf("METRICS: %w", err)
+		}
 	}
 	for signal, enabled := range map[string]bool{"TRACES": c.Traces, "METRICS": c.Metrics, "LOGS": c.Logs} {
 		if !enabled {

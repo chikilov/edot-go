@@ -348,3 +348,36 @@ HTML 로그인 페이지나 잘못된 Content-Type을 성공으로 집계하지 
 빈 포트나 query 구분자(`?`)만 있는 URL도 초기화 시 거부합니다.
 포트 생략과 IPv6 주소는 지원합니다. 이 검증은 코드 설정에 적용되며
 환경변수 endpoint 파싱은 upstream exporter가 담당합니다.
+
+
+### 배치·큐·메트릭 주기를 코드로 설정
+
+```go
+cfg := edotgo.DefaultConfig()
+cfg.TraceBatch = edotgo.BatchConfig{
+    MaxQueueSize:       4096,
+    MaxExportBatchSize:  256,
+    ExportInterval:     time.Second,
+    ExportTimeout:      5 * time.Second,
+}
+cfg.LogBatch = cfg.TraceBatch
+cfg.MetricReader = edotgo.MetricReaderConfig{
+    Interval:           10 * time.Second,
+    Timeout:            5 * time.Second,
+    MaxExportBatchSize:  1000,
+}
+```
+
+각 필드의 양수 값은 해당 upstream 환경변수/기본값보다 우선합니다. 0은 상속하며
+음수는 활성화된 signal의 초기화 오류입니다. 큐와 batch 크기를 모두 코드로 지정했다면
+batch가 큐보다 클 수 없습니다. 하나만 지정한 경우 나머지는 upstream에서 결정하며,
+최종 batch 크기는 upstream 정책에 따라 큐 크기로 제한될 수 있습니다.
+큐·batch 크기는 byte가 아닌 span/log record 개수이고, metric batch는 data point 개수입니다.
+큐가 가득 찼을 때 앱을 막지 않고 드롭하는 기존 정책을 유지합니다.
+
+`BatchConfig.ExportTimeout`과 `MetricReader.Timeout`은 processor/reader 제한입니다.
+`ExporterConfig.Timeout`의 네트워크 전송 제한과는 별도이며 적용되는 context 중 짧은
+deadline에 따라 취소될 수 있습니다. 종료 시에도 별도 timeout의 context를 사용하세요.
+
+실제 Collector 중단·네트워크 차단 부하 검증은 [로컬 runbook](deploy/local/README.md),
+Cloud 8.19 APM 및 Managed OTLP 설정은 [Cloud runbook](deploy/cloud/README.md)을 참고하세요.

@@ -110,3 +110,31 @@ Version 0.3.3 endpoint validation — 2026-11-09:
 - Full `go test -race -timeout=3m ./...`: PASS (72.173s).
 - `go vet ./...`, `go build ./...`, and diff whitespace checks: PASS.
 - No transport changes; environment endpoint parsing remains upstream behavior.
+
+Version 0.4.0 operations and recovery — 2026-11-09:
+- New pipeline settings cover trace/log queue and batch sizes, interval and timeout,
+  and periodic metric reader interval, timeout and data-point batch size.
+- Focused race tests passed three repetitions: code overrides environment, zero
+  inherits environment, real exported batches respect limits, all signals cancel
+  under explicit processor/reader timeouts, and invalid values fail before startup.
+- Those tests reproduced upstream custom timeout causes being classified as generic
+  failures; diagnostics now retain the caller context cancellation classification.
+- Full `go test -race -timeout=3m ./...`: PASS (81.741s); vet/build/mod verification PASS.
+- Seven offline Cloud verifier regressions PASS, including secret redaction,
+  inherited-route isolation, no shell evaluation, direct/proxy indexed correlation,
+  and missing read privileges. Actionlint v1.7.12: PASS.
+- Baseline SDK 0.3.3 real local soak: three concurrent protocols, 300 seconds,
+  25 synthetic requests/sec/protocol, 7,500 events per signal/protocol generated.
+  Collector stopped/restarted for 30 seconds and separate TCP connections were
+  disconnected/refused for 30 seconds. Both recoveries passed for all signals.
+  Post-recovery indexed traces/log IDs and application metrics were verified.
+- Five-minute heap growth (GC live heap): HTTP/protobuf +56,720 bytes,
+  gRPC -66,920 bytes, HTTP/JSON +200,952 bytes. Goroutine growth -6/-6/-12.
+  Maximum synthetic emission duration 1.593/1.257/1.538 ms respectively.
+  This is a bounded guardrail check, not proof of zero leaks or zero-loss delivery.
+- A longer local soak is run separately; raw reports are local deliverables,
+  not checked-in credentials or production data.
+- Cloud Hosted APM (reported version 8.19.16): HTTP/protobuf and gRPC public TLS,
+  API Key, all-signal exports, direct Elasticsearch indexing and trace/log ID
+  correlation PASS. See deploy/cloud/RESULTS.md. Managed OTLP and Cloud HTTP/JSON
+  remain unverified; the tested 8.x endpoint is APM Server.

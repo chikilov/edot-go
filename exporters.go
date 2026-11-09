@@ -3,6 +3,7 @@ package edotgo
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -27,7 +28,7 @@ func (e spanGate) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan
 	}
 	e.diagnostics.begin("traces")
 	err := e.SpanExporter.ExportSpans(ctx, spans)
-	e.diagnostics.finish("traces", items, err)
+	e.diagnostics.finish("traces", items, diagnosticError(ctx, err))
 	return err
 }
 
@@ -45,7 +46,7 @@ func (e metricGate) Export(ctx context.Context, data *metricdata.ResourceMetrics
 	}
 	e.diagnostics.begin("metrics")
 	err := e.Exporter.Export(ctx, data)
-	e.diagnostics.finish("metrics", items, err)
+	e.diagnostics.finish("metrics", items, diagnosticError(ctx, err))
 	return err
 }
 
@@ -63,6 +64,16 @@ func (e logGate) Export(ctx context.Context, records []sdklog.Record) error {
 	}
 	e.diagnostics.begin("logs")
 	err := e.Exporter.Export(ctx, records)
-	e.diagnostics.finish("logs", items, err)
+	e.diagnostics.finish("logs", items, diagnosticError(ctx, err))
+	return err
+}
+
+// Upstream exporters may return context.Cause (a custom timeout error) rather
+// than wrapping context.DeadlineExceeded. Preserve their returned error while
+// retaining the caller context's cancellation classification in diagnostics.
+func diagnosticError(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return errors.Join(err, ctx.Err())
+	}
 	return err
 }

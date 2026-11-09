@@ -74,3 +74,31 @@ writing raw spans into Elasticsearch alone would not provide the same result.
 
 For a single-service check, use `go run ./examples/cloudcheck` with the same local
 OTLP endpoint. It reports exporter success; it does not query Elasticsearch or Kibana.
+
+## 지속 부하와 장애 복구 검증
+
+```sh
+python3 deploy/local/soak.py --duration 300 --rate 25 --output /tmp/edot-soak.json
+# 더 긴 검증: --duration 3600 (1시간), --rate는 프로토콜별 요청 수/초
+```
+
+실행 중 이 compose 프로젝트의 Collector가 중단·재시작됩니다. Elasticsearch와 Kibana는
+계속 실행되지만 해당 Collector를 함께 쓰는 다른 앱의 전송에도 일시적인 영향이 있습니다.
+도구는 종료 시 Collector를 복원하며 합성 데이터는 실행별 서비스 이름으로 구분합니다.
+
+세 프로토콜을 동시에 구동하고 다음 순서를 검증합니다.
+
+1. 60초 정상 부하 후 Collector를 30초 중단하고 재시작합니다.
+2. 60초 이상 복구 상태를 유지한 뒤 임시 TCP relay의 기존 연결·신규 연결을 30초 차단합니다.
+3. 네트워크를 복구한 뒤 남은 시간 동안 전송을 계속하고 마지막으로 flush합니다.
+4. 각 signal에서 실패와 복구 후 성공 증가를 검사하고, 최종 trace/log의 span ID 연결과
+   메트릭의 실제 Elasticsearch 저장을 확인합니다.
+
+10초 간격으로 GC 후 Go live heap과 goroutine 수를 수집합니다. 워밍업 표본 대비
+마지막 heap 증가 32 MiB, goroutine 증가 20, 개별 합성 호출 최대 250ms,
+목표 생성량의 90%를 회귀 감지 기준으로 사용합니다. 이 값은 범용 성능 보장이 아닙니다.
+실행 시간·부하·장애 길이에 따라 조정이 필요합니다. RSS, 컨테이너 메모리, 무손실 전달,
+무한 기간의 누수 부재를 보장하지 않습니다. exporter timeout을 넘긴 batch는 손실될 수 있습니다.
+
+최소 5분 실행은 장애 복구 회귀 검증이며, 24시간 수준의 운영 soak를 대체하지 않습니다.
+보고서에는 합성 trace ID와 진단 통계만 들어가며 인증정보는 포함하지 않습니다.

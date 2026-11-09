@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- Add programmatic trace/log batching, queue capacity, export interval/timeout,
+  and metric reader interval/timeout/data-point batch limits. Zero inherits upstream settings.
+- Classify failed exports using the canceled caller context when upstream returns
+  a custom timeout cause, while preserving the original returned error.
+- Add an opt-in real Collector/network recovery soak with resource and indexed-data checks.
+- Add private Cloud config examples and a credential-redacting connectivity verifier
+  for Managed OTLP and existing APM Server endpoints (including Hosted 8.19).
+
 ## 0.3.3
 
 - Reject programmatic endpoints with empty hosts, empty/out-of-range ports,
