@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Shut down providers concurrently so a stalled trace exporter does not consume
+  the metric/log shutdown deadline. Preserve first-call ownership and cached errors.
+- Add a blocked-trace shutdown regression covering delivery of metrics and logs.
+
 ## 0.3.1
 
 - Validate programmatic HTTP/gRPC headers before creating exporters, reject ambiguous

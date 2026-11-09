@@ -224,3 +224,63 @@ func TestJSONExporterProtobufResponseCompatibility(t *testing.T) {
 		}
 	}
 }
+
+func TestShutdownDoesNotStarveOtherSignals(t *testing.T) {
+	cleanEnv(t)
+	release := make(chan struct{})
+	var once sync.Once
+	var metrics, logs atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		switch r.URL.Path {
+		case "/v1/traces":
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		case "/v1/metrics":
+			metrics.Add(1)
+		case "/v1/logs":
+			logs.Add(1)
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+	}))
+	defer server.Close()
+	c := DefaultConfig()
+	c.RuntimeMetrics = false
+	c.OTLP = ExporterConfig{Protocol: "http/protobuf", Endpoint: server.URL, Timeout: time.Second}
+	s, err := New(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		once.Do(func() { close(release) })
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+	ctx, span := s.TracerProvider.Tracer("flush").Start(context.Background(), "slow trace")
+	s.Logger("flush").InfoContext(ctx, "log before shutdown")
+	counter, err := s.MeterProvider.Meter("flush").Int64Counter("flush.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter.Add(ctx, 1)
+	span.End()
+	flush, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err = s.Shutdown(flush)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected shared deadline, got %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Error("flush exceeded shared deadline")
+	}
+	if metrics.Load() == 0 || logs.Load() == 0 {
+		t.Errorf("blocked trace starved other signals: metrics=%d logs=%d", metrics.Load(), logs.Load())
+	}
+	if next := s.Shutdown(context.Background()); !errors.Is(next, context.DeadlineExceeded) {
+		t.Fatalf("shutdown result changed: %v", next)
+	}
+}

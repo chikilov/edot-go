@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.3.1"
+const Version = "0.3.2"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -218,19 +218,30 @@ func (s *SDK) ForceFlush(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// Shutdown attempts all providers and reports their joined errors. The first
-// caller owns shutdown; subsequent calls return the same result.
+// Shutdown starts all initialized providers concurrently with the caller context.
+// The first caller owns shutdown; concurrent and subsequent calls wait for and
+// return the same result. Providers may finish background cancellation later.
 func (s *SDK) Shutdown(ctx context.Context) error {
 	s.once.Do(func() {
-		var errs []error
+		var shutdowns []func(context.Context) error
 		if s.TracerProvider != nil {
-			errs = append(errs, s.TracerProvider.Shutdown(ctx))
+			shutdowns = append(shutdowns, s.TracerProvider.Shutdown)
 		}
 		if s.MeterProvider != nil {
-			errs = append(errs, s.MeterProvider.Shutdown(ctx))
+			shutdowns = append(shutdowns, s.MeterProvider.Shutdown)
 		}
 		if s.LoggerProvider != nil {
-			errs = append(errs, s.LoggerProvider.Shutdown(ctx))
+			shutdowns = append(shutdowns, s.LoggerProvider.Shutdown)
+		}
+		results := make(chan error, len(shutdowns))
+		for _, shutdown := range shutdowns {
+			go func(fn func(context.Context) error) { results <- fn(ctx) }(shutdown)
+		}
+		var errs []error
+		// Wait for every provider call, even with an already canceled context, so
+		// each provider gets the opportunity to release its resources.
+		for range shutdowns {
+			errs = append(errs, <-results)
 		}
 		s.shutdownErr = errors.Join(errs...)
 	})

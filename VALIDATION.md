@@ -89,3 +89,14 @@ Version 0.3.1 hardening — 2026-11-09:
   with frontend/backend services and three spans. Screenshot retained locally outside the repository.
 - Code header validation does not replace upstream environment header parsing.
   Cloud Managed OTLP and licensed Service Map UI remain outside this verification.
+
+Version 0.3.2 shutdown hardening — 2026-11-09:
+- Reproduced metric/log starvation when a blocked trace shutdown consumed the shared deadline.
+- Concurrent provider shutdown regression passed three race-enabled repetitions;
+  cached deadline errors remain stable on subsequent calls.
+- Full `go test -race -timeout=3m ./...`: PASS (88.407s).
+- `go vet ./...` and `go build ./...`: PASS.
+- Local Elastic integration: PASS for HTTP/protobuf, gRPC, and HTTP/JSON,
+  including per-protocol 6 traces, 18 spans, 12 correlated logs and metric checks.
+- Shutdown still waits for provider calls and caches the first caller result;
+  it does not guarantee persistence or retry after a timeout.
