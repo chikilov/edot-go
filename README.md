@@ -17,7 +17,8 @@ Elastic EDOT Java의 플랫폼 독립적인 SDK 커스터마이징을 Go로 옮�
 ## Elastic Cloud로 실행
 
 Kibana의 OpenTelemetry 온보딩 화면에서 제공하는 Managed OTLP 주소와 API Key를 사용합니다.
-일반 Elasticsearch 주소나 기존 APM Server 주소를 대신 넣지 마세요.
+아래 예시는 Managed OTLP용입니다. Cloud 8.19의 APM endpoint 설정과 실제 검증은
+[Cloud runbook](deploy/cloud/README.md)을 참고하세요. Elasticsearch API URL은 수집용 endpoint와 구분합니다.
 
 ```bash
 export OTEL_SERVICE_NAME=orders-go
@@ -381,3 +382,13 @@ deadline에 따라 취소될 수 있습니다. 종료 시에도 별도 timeout�
 
 실제 Collector 중단·네트워크 차단 부하 검증은 [로컬 runbook](deploy/local/README.md),
 Cloud 8.19 APM 및 Managed OTLP 설정은 [Cloud runbook](deploy/cloud/README.md)을 참고하세요.
+
+
+### 큐 진단과 버전 설치
+
+`QueueDiagnosticsFromMetrics`로 upstream 자체 메트릭의 processor별 큐 깊이·용량과
+queue-full 드롭을 읽을 수 있습니다. 실험적 관측 활성화와 global meter 연결이 필요하며,
+로그 드롭 보고 지연·delta/cumulative 차이를 구분합니다. 라이브러리는 전역 설정을 자동 변경하지 않습니다.
+자세한 사용법은 [QUEUE_DIAGNOSTICS.md](QUEUE_DIAGNOSTICS.md)를 참고하세요.
+
+태그를 고정한 설치·업그레이드와 source 배포 파일 검증은 [RELEASING.md](RELEASING.md)에 있습니다.

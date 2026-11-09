@@ -48,10 +48,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python3 deploy/local/prepare.py
-          python3 -m py_compile deploy/local/prepare.py deploy/local/verify.py deploy/local/soak.py deploy/cloud/verify.py
+          python3 -m py_compile deploy/local/prepare.py deploy/local/verify.py deploy/local/soak.py deploy/cloud/verify.py scripts/package_release.py
           python3 -m unittest discover -s deploy/cloud -p 'test_*.py'
           docker compose --project-directory deploy/local config --quiet
           git check-ignore deploy/local/.env
+          python3 scripts/package_release.py --output-dir "$RUNNER_TEMP/release-smoke-a"
+          python3 scripts/package_release.py --output-dir "$RUNNER_TEMP/release-smoke-b"
+          cmp "$RUNNER_TEMP/release-smoke-a/SHA256SUMS" "$RUNNER_TEMP/release-smoke-b/SHA256SUMS"
       - name: Test with race detector
         run: go test -race -coverprofile=coverage.out -timeout=3m ./...
       - name: Vet and build

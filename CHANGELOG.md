@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Parse pinned upstream experimental SDK queue metrics into sanitized processor
+  observations, preserving availability and delta/cumulative temporality.
+- Support current-depth cumulative observable up/down counters and gauges;
+  reject delta queue changes as current depth and distinguish delayed log drops.
+- Keep instance Diagnostics unchanged; no automatic globals/environment changes.
+- Add real blocked-export queue saturation/drain tests and a synthetic local example.
+- Add version-pinned private-module installation, release packaging and checksums.
+
 ## 0.4.0
 
 - Add programmatic trace/log batching, queue capacity, export interval/timeout,

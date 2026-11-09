@@ -138,3 +138,21 @@ Version 0.4.0 operations and recovery — 2026-11-09:
   API Key, all-signal exports, direct Elasticsearch indexing and trace/log ID
   correlation PASS. See deploy/cloud/RESULTS.md. Managed OTLP and Cloud HTTP/JSON
   remain unverified; the tested 8.x endpoint is APM Server.
+
+Version 0.5.0 queue diagnostics and release — 2026-11-10:
+- Added QueueDiagnosticsFromMetrics for pinned upstream experimental processor
+  queue metrics. Output includes per-processor availability, capacity/depth,
+  queue_full values, temporality and delayed log-overflow reporting.
+- No environment/global mutations or collection/export in the library parser.
+  Existing per-instance Diagnostics queue flags remain unavailable by design.
+- Real trace/log blocked-export tests: queue capacity/depth 2, five further items
+  produce three drops. Trace drops appear immediately; log drops only after
+  dequeue/flush. Drained depth zero and cumulative drops three: PASS (3 race runs).
+- Delta overflow labels, delta queue rejection, missing values, unknown scopes,
+  arbitrary component names and unrelated-attribute redaction regressions: PASS.
+- Local synthetic queuediagnostics example: saturated/drained snapshots PASS.
+- Full race suite PASS (88.673s); vet/build/tidy-diff and whitespace checks PASS.
+- Packaging smoke test on the prior immutable commit PASS; CI additionally checks
+  repeated source packaging checksums on the release commit.
+- Release packaging reads git archive, rejecting tracked private .env/IDE/cache
+  files. Untracked personal files are never included.
