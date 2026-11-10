@@ -104,9 +104,9 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_version_probe_never_exposes_arbitrary_server_content(self):
         values = {'ELASTICSEARCH_URL': 'https://search.example.invalid', 'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
-        with patch.object(verify.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps({'version': {'number': 'private-server-secret'}}).encode())):
+        with patch.object(verify, 'open_cloud_request', return_value=io.BytesIO(json.dumps({'version': {'number': 'private-server-secret'}}).encode())):
             self.assertIsNone(verify.observe_version(values))
-        with patch.object(verify.urllib.request, 'urlopen', side_effect=urllib.error.HTTPError('https://search.example.invalid', 403, 'denied', {}, None)):
+        with patch.object(verify, 'open_cloud_request', side_effect=urllib.error.HTTPError('https://search.example.invalid', 403, 'denied', {}, None)):
             self.assertIsNone(verify.observe_version(values))
 
     def test_observed_version_selects_apm_before_export(self):

@@ -1,6 +1,6 @@
 # 설치·업그레이드와 릴리스
 
-이 프로젝트는 Elastic이 지원하는 공식 SDK가 아닌 비공식 부분 포팅이며, Go 1.26 이상이 필요합니다.
+이 프로젝트는 Elastic이 지원하는 공식 SDK가 아닌 비공식 부분 포팅이며, Go 1.26.10 이상이 필요합니다.
 현재 GitHub 저장소는 비공개입니다. 접근 가능한 GitHub 계정으로 Git 인증을 먼저 준비하세요.
 
 ## 버전 고정 설치
@@ -8,7 +8,7 @@
 기존 Go 프로젝트에서 실행합니다. 기존 `GOPRIVATE` 목록이 있다면 아래 경로를 추가해 사용하세요.
 
 ```sh
-GOPRIVATE=github.com/chikilov/edot-go go get github.com/chikilov/edot-go@v0.5.0
+GOPRIVATE=github.com/chikilov/edot-go go get github.com/chikilov/edot-go@v0.5.1
 ```
 
 개인 계정에서 Git 인증을 준비할 때 GitHub CLI를 쓴다면 `gh auth setup-git`을 사용할 수 있습니다.
@@ -18,18 +18,20 @@ Go module 다운로드는 private 경로를 public proxy/checksum 서비스로 �
 소스 ZIP/tar.gz를 받아 로컬에서 사용하는 경우 프로젝트의 go.mod에 로컬 replace를 설정할 수도 있습니다.
 
 ```sh
-go mod edit -replace=github.com/chikilov/edot-go=/절대/경로/edot-go-v0.5.0
+go mod edit -replace=github.com/chikilov/edot-go=/절대/경로/edot-go-v0.5.1
 ```
 
-## 0.4.0 → 0.5.0 업그레이드
+## 0.5.0 → 0.5.1 업그레이드
 
-- 기존 설정과 `SDK.Diagnostics()` 동작은 유지합니다.
+- 최소 Go 버전이 1.26.10으로 올라갑니다. 이전 도구 체인으로 만든 바이너리는 재빌드해야 합니다.
+- HTTP redirect를 따라가지 않습니다. redirect URL 대신 최종 OTLP 수집 URL을 설정하세요.
+- ExporterConfig의 JSON 직렬화는 인증정보를 마스킹합니다. 설정 저장용 serializer로 사용하지 마세요.
+- 기존 `SDK.Diagnostics()`와 OTLP 프로토콜 동작은 유지합니다.
 - 큐 관측은 선택 사항입니다. 사용하지 않으면 실험적 환경변수나 전역 provider 설정이 필요 없습니다.
 - 새 `QueueDiagnosticsFromMetrics`를 쓸 때는 [수집 조건과 한계](QUEUE_DIAGNOSTICS.md)를 확인하세요.
 - source-only 라이브러리 릴리스이며 설치용 agent 바이너리는 제공하지 않습니다.
-- 배포 전에 사용 환경에서 smoke test와 정상 종료를 확인하세요. 이전 검증 버전(0.4.0)으로 돌아가려면
-  `go get github.com/chikilov/edot-go@09e7f75ca3d15510d8802a7ff541542c28b6c0b5`처럼
-  해당 commit을 지정합니다. 이 저장소의 최초 릴리스 이전 버전에는 태그가 없습니다.
+- 배포 전에 사용 환경에서 smoke test와 정상 종료를 확인하세요. 이전 태그로 돌아가면 해당 버전에 없는 보안 수정도 함께 사라집니다.
+  운영에서는 보안 패치가 포함된 버전으로 재빌드하고 정상 종료·전송 smoke test를 수행하세요.
 
 ## 유지관리자 배포 순서
 
@@ -39,7 +41,7 @@ go mod edit -replace=github.com/chikilov/edot-go=/절대/경로/edot-go-v0.5.0
 4. 태그를 지정해 패키징합니다.
 
 ```sh
-python3 scripts/package_release.py --ref v0.5.0 --output-dir /안전한/배포/디렉터리
+python3 scripts/package_release.py --ref v0.5.1 --output-dir /안전한/배포/디렉터리
 ```
 
 패키징은 live 작업 폴더가 아닌 해당 commit의 `git archive`를 사용합니다.

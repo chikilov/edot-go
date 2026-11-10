@@ -44,7 +44,9 @@ def main():
             raise SystemExit('archive manifests differ')
     for name in names:
         parts = Path(name).parts
-        if Path(name).name == '.env' or '.idea' in parts or '__pycache__' in parts:
+        base = Path(name).name
+        private_env = (base.startswith('.env') or base.endswith('.env')) and not base.endswith('.example')
+        if private_env or '.idea' in parts or '__pycache__' in parts:
             raise SystemExit('private/development-only file tracked in release commit')
     args.output_dir.mkdir(parents=True, exist_ok=True)
     payloads = {

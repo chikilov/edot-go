@@ -10,7 +10,7 @@ Elastic EDOT Java의 플랫폼 독립적인 SDK 커스터마이징을 Go로 옮�
 
 ## 요구사항
 
-- Go **1.26 이상**. 고정한 OTel 의존성의 요구 버전입니다. `GOTOOLCHAIN=auto`이면 도구 체인이 자동 다운로드될 수 있습니다.
+- Go **1.26.10 이상**. 알려진 표준 라이브러리 보안 패치를 포함하는 최소 버전입니다. `GOTOOLCHAIN=auto`이면 도구 체인이 자동 다운로드될 수 있습니다.
 - Elastic Cloud의 **Managed OTLP Endpoint** 또는 선택한 OTLP 프로토콜을 받는 Collector.
 - 전송 프로토콜: **http/protobuf**(기본값), **grpc**(protobuf), **http/json**. 세 신호 모두 지원합니다.
 
@@ -396,3 +396,5 @@ queue-full 드롭을 읽을 수 있습니다. 실험적 관측 활성화와 glob
 
 Elastic 8.x / 9.x / Serverless별 설정 예시와 버전 검증은
 [ELASTIC_COMPATIBILITY.md](ELASTIC_COMPATIBILITY.md)에 구분했습니다.
+
+보안 검토 결과·전송 및 로그 정책은 [SECURITY.md](SECURITY.md)를 참고하세요.

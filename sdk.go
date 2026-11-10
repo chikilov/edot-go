@@ -28,7 +28,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-const Version = "0.5.0"
+const Version = "0.5.1"
 
 // SDK owns all providers. Create one per process and call Shutdown at exit.
 // Providers are explicit by default; InstallGlobals is an opt-in convenience.
@@ -54,7 +54,9 @@ func NewFromEnv(ctx context.Context) (*SDK, error) {
 }
 
 // New reads the supplied config and OTLP exporter environment settings. No
-// credentials or endpoint URLs are logged. It never changes environment values.
+// configuration is logged directly and environment values are never changed.
+// Upstream errors retain their original details; configure the OTel error handler
+// when raw error messages must not be logged.
 func New(ctx context.Context, c Config) (result *SDK, err error) {
 	if err = c.validate(); err != nil {
 		return nil, err

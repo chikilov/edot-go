@@ -71,20 +71,17 @@ func newTraceExporter(ctx context.Context, supplied ...exporterSettings) (sdktra
 		}
 		opts = append(opts, otlptracehttp.WithCompression(compression))
 	}
-	if s.Protocol == "http/json" {
-		client, err := jsonHTTPClient("TRACES", s)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, otlptracehttp.WithHTTPClient(client))
-		exp, err := otlptracehttp.New(ctx, opts...)
-		if err != nil {
-			client.CloseIdleConnections()
-			return nil, err
-		}
-		return &jsonTraceExporter{SpanExporter: exp, client: client}, nil
+	client, err := otlpHTTPClient("TRACES", s)
+	if err != nil {
+		return nil, err
 	}
-	return otlptracehttp.New(ctx, opts...)
+	opts = append(opts, otlptracehttp.WithHTTPClient(client))
+	exp, err := otlptracehttp.New(ctx, opts...)
+	if err != nil {
+		client.CloseIdleConnections()
+		return nil, err
+	}
+	return &httpTraceExporter{SpanExporter: exp, client: client}, nil
 }
 
 func newMetricExporter(ctx context.Context, supplied ...exporterSettings) (sdkmetric.Exporter, error) {
@@ -137,20 +134,17 @@ func newMetricExporter(ctx context.Context, supplied ...exporterSettings) (sdkme
 		}
 		opts = append(opts, otlpmetrichttp.WithCompression(compression))
 	}
-	if s.Protocol == "http/json" {
-		client, err := jsonHTTPClient("METRICS", s)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, otlpmetrichttp.WithHTTPClient(client))
-		exp, err := otlpmetrichttp.New(ctx, opts...)
-		if err != nil {
-			client.CloseIdleConnections()
-			return nil, err
-		}
-		return &jsonMetricExporter{Exporter: exp, client: client}, nil
+	client, err := otlpHTTPClient("METRICS", s)
+	if err != nil {
+		return nil, err
 	}
-	return otlpmetrichttp.New(ctx, opts...)
+	opts = append(opts, otlpmetrichttp.WithHTTPClient(client))
+	exp, err := otlpmetrichttp.New(ctx, opts...)
+	if err != nil {
+		client.CloseIdleConnections()
+		return nil, err
+	}
+	return &httpMetricExporter{Exporter: exp, client: client}, nil
 }
 
 func newLogExporter(ctx context.Context, supplied ...exporterSettings) (sdklog.Exporter, error) {
@@ -201,48 +195,45 @@ func newLogExporter(ctx context.Context, supplied ...exporterSettings) (sdklog.E
 		}
 		opts = append(opts, otlploghttp.WithCompression(compression))
 	}
-	if s.Protocol == "http/json" {
-		client, err := jsonHTTPClient("LOGS", s)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, otlploghttp.WithHTTPClient(client))
-		exp, err := otlploghttp.New(ctx, opts...)
-		if err != nil {
-			client.CloseIdleConnections()
-			return nil, err
-		}
-		return &jsonLogExporter{Exporter: exp, client: client}, nil
+	client, err := otlpHTTPClient("LOGS", s)
+	if err != nil {
+		return nil, err
 	}
-	return otlploghttp.New(ctx, opts...)
+	opts = append(opts, otlploghttp.WithHTTPClient(client))
+	exp, err := otlploghttp.New(ctx, opts...)
+	if err != nil {
+		client.CloseIdleConnections()
+		return nil, err
+	}
+	return &httpLogExporter{Exporter: exp, client: client}, nil
 }
 
-type jsonMetricExporter struct {
+type httpMetricExporter struct {
 	sdkmetric.Exporter
 	client *http.Client
 }
 
-func (e *jsonMetricExporter) Shutdown(ctx context.Context) error {
+func (e *httpMetricExporter) Shutdown(ctx context.Context) error {
 	defer e.client.CloseIdleConnections()
 	return e.Exporter.Shutdown(ctx)
 }
 
-type jsonLogExporter struct {
+type httpLogExporter struct {
 	sdklog.Exporter
 	client *http.Client
 }
 
-func (e *jsonLogExporter) Shutdown(ctx context.Context) error {
+func (e *httpLogExporter) Shutdown(ctx context.Context) error {
 	defer e.client.CloseIdleConnections()
 	return e.Exporter.Shutdown(ctx)
 }
 
-type jsonTraceExporter struct {
+type httpTraceExporter struct {
 	sdktrace.SpanExporter
 	client *http.Client
 }
 
-func (e *jsonTraceExporter) Shutdown(ctx context.Context) error {
+func (e *httpTraceExporter) Shutdown(ctx context.Context) error {
 	defer e.client.CloseIdleConnections()
 	return e.SpanExporter.Shutdown(ctx)
 }

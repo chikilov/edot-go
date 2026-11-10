@@ -68,7 +68,7 @@ class CloudCheckTests(unittest.TestCase):
             {'hits': {'hits': [{'fields': {'span.id': ['b'*16]}}]}},
             {'hits': {'hits': [{'_id': 'synthetic-metric'}]}},
         ]
-        with patch.object(verify.urllib.request, 'urlopen', side_effect=[io.BytesIO(json.dumps(x).encode()) for x in replies]) as lookup:
+        with patch.object(verify, 'open_cloud_request', side_effect=[io.BytesIO(json.dumps(x).encode()) for x in replies]) as lookup:
             result = verify.indexed(values, 'apm', tid, '2026-11-09T00:00:00Z')
             self.assertTrue(result['verified'])
             queries = [json.loads(call.args[0].data) for call in lookup.call_args_list]
@@ -82,7 +82,7 @@ class CloudCheckTests(unittest.TestCase):
         replies = [{'hits': {'hits': [{'fields': {'span.id': ['b'*16]}}]}},
                    {'hits': {'hits': [{'fields': {'span.id': ['b'*16]}}]}},
                    {'hits': {'hits': [{'_id': 'synthetic-metric'}]}}]
-        with patch.object(verify.urllib.request, 'urlopen', side_effect=[io.BytesIO(json.dumps(x).encode()) for x in replies]) as lookup:
+        with patch.object(verify, 'open_cloud_request', side_effect=[io.BytesIO(json.dumps(x).encode()) for x in replies]) as lookup:
             self.assertTrue(verify.indexed(values, 'apm', 'a'*32, '2026-11-09T00:00:00Z')['verified'])
             for call in lookup.call_args_list:
                 req = call.args[0]
@@ -94,7 +94,7 @@ class CloudCheckTests(unittest.TestCase):
         values = {'ELASTICSEARCH_URL': 'https://search.example.invalid',
                   'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
         denied = urllib.error.HTTPError('https://search.example.invalid', 403, 'Forbidden', {}, None)
-        with patch.object(verify.urllib.request, 'urlopen', side_effect=denied):
+        with patch.object(verify, 'open_cloud_request', side_effect=denied):
             result = verify.indexed(values, 'apm', 'a'*32, '2026-11-09T00:00:00Z')
             self.assertFalse(result['verified'])
             self.assertIn('no Elasticsearch read access', result['reason'])

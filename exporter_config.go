@@ -31,6 +31,10 @@ type ExporterConfig struct {
 func (ExporterConfig) String() string     { return "ExporterConfig{credentials and endpoint redacted}" }
 func (c ExporterConfig) GoString() string { return c.String() }
 
+// MarshalJSON prevents accidental secret disclosure through structured logs.
+// Persist credentials using an explicit secret store, not config serialization.
+func (ExporterConfig) MarshalJSON() ([]byte, error) { return []byte(`{"redacted":true}`), nil }
+
 type exporterSettings struct {
 	ExporterConfig
 	endpointIsSignal bool

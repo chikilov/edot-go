@@ -8,20 +8,14 @@ package edotgo
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	logpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -32,62 +26,8 @@ import (
 
 const maxJSONBody = 16 << 20 // Limit decoded request/response bodies to 16 MiB.
 
-func signalEnv(signal, key string) string {
-	if v := os.Getenv("OTEL_EXPORTER_OTLP_" + signal + "_" + key); v != "" {
-		return v
-	}
-	return os.Getenv("OTEL_EXPORTER_OTLP_" + key)
-}
-
-func jsonHTTPClient(signal string, supplied ...exporterSettings) (*http.Client, error) {
-	settings := exporterSettingsFor(signal, supplied)
-
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	if file := signalEnv(signal, "CERTIFICATE"); file != "" && settings.TLSConfig == nil {
-		pem, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("%s CA certificate: %w", signal, err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("%s CA certificate: no valid certificates", signal)
-		}
-		tlsConfig.RootCAs = pool
-	}
-	cert, key := signalEnv(signal, "CLIENT_CERTIFICATE"), signalEnv(signal, "CLIENT_KEY")
-	if (cert != "" || key != "") && settings.TLSConfig == nil {
-		if cert == "" || key == "" {
-			return nil, fmt.Errorf("%s: client certificate and key must both be set", signal)
-		}
-		pair, err := tls.LoadX509KeyPair(cert, key)
-		if err != nil {
-			return nil, fmt.Errorf("%s client TLS: %w", signal, err)
-		}
-		tlsConfig.Certificates = []tls.Certificate{pair}
-	}
-	if settings.TLSConfig != nil {
-		tlsConfig = settings.TLSConfig.Clone()
-	}
-	timeout := 10 * time.Second
-	if v := signalEnv(signal, "TIMEOUT"); v != "" && settings.Timeout == 0 {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n <= 0 || n > int64((1<<63-1)/time.Millisecond) {
-			return nil, fmt.Errorf("%s timeout: expected positive milliseconds", signal)
-		}
-		timeout = time.Duration(n) * time.Millisecond
-	}
-	if settings.Timeout > 0 {
-		timeout = settings.Timeout
-	}
-	base := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: true, MaxIdleConns: 100, IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ExpectContinueTimeout: time.Second, TLSClientConfig: tlsConfig}
-	return &http.Client{Timeout: timeout, Transport: &jsonTransport{base: base, signal: signal}}, nil
-}
-
 type jsonTransport struct {
-	base   *http.Transport
+	base   *guardedHTTPTransport
 	signal string
 }
 
@@ -113,7 +53,7 @@ func readBody(body io.Reader, encoding string) ([]byte, error) {
 		return readLimited(r)
 	}
 	if encoding != "" {
-		return nil, fmt.Errorf("unsupported OTLP content encoding %q", encoding)
+		return nil, fmt.Errorf("unsupported OTLP content encoding")
 	}
 	return readLimited(body)
 }
@@ -193,7 +133,7 @@ func (t *jsonTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		switch contentType {
 		case "application/json":
 			if err = (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, msg); err != nil {
-				return nil, fmt.Errorf("OTLP JSON response: %w", err)
+				return nil, fmt.Errorf("invalid OTLP JSON response")
 			}
 			data, err = proto.Marshal(msg)
 			if err != nil {
@@ -202,7 +142,7 @@ func (t *jsonTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		case "application/x-protobuf":
 			// Retain interoperability with receivers returning a binary response.
 			if err = proto.Unmarshal(data, msg); err != nil {
-				return nil, fmt.Errorf("OTLP protobuf response: %w", err)
+				return nil, fmt.Errorf("invalid OTLP protobuf response")
 			}
 		default:
 			return nil, fmt.Errorf("unexpected OTLP response content type")

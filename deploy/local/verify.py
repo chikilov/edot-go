@@ -14,6 +14,11 @@ def load_settings():
             k,v=line.split('=',1);values[k]=v.strip().strip('"').strip("'")
     return values
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def request(path,body=None,kibana=False):
     values=load_settings()
     auth=base64.b64encode(('elastic:'+values['ES_LOCAL_PASSWORD']).encode()).decode()
@@ -21,7 +26,10 @@ def request(path,body=None,kibana=False):
     if kibana:headers.update({'kbn-xsrf':'local-check','x-elastic-internal-origin':'Kibana','elastic-api-version':'1'})
     port=values['KIBANA_LOCAL_PORT'] if kibana else values['ES_LOCAL_PORT']
     req=urllib.request.Request('http://127.0.0.1:'+port+path,headers=headers,data=None if body is None else json.dumps(body).encode())
-    with urllib.request.urlopen(req,timeout=20) as response:return json.load(response)
+    with urllib.request.build_opener(_NoRedirect()).open(req,timeout=20) as response:
+        body=response.read(2*1024*1024+1)
+        if len(body)>2*1024*1024:raise RuntimeError('local verification response exceeds 2 MiB')
+        return json.loads(body)
 
 def wait_for(fn,timeout=90):
     end=time.monotonic()+timeout

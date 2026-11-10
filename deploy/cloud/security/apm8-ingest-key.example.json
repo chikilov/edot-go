@@ -1,0 +1,13 @@
+{
+  "name": "edot-go-apm8-ingest",
+  "expiration": "7d",
+  "role_descriptors": {
+    "apm_ingest_only": {
+      "cluster": [],
+      "indices": [],
+      "applications": [
+        {"application": "apm", "privileges": ["event:write"], "resources": ["*"]}
+      ]
+    }
+  }
+}

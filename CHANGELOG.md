@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
+
+Security patch. Go >=1.26.10 and golang.org/x/net v0.62.0 are required; x/sys
+and x/text follow the selected x/net patch dependencies.
+
+- Reject HTTP redirects for all OTLP HTTP signals and authenticated Cloud lookup
+  requests to prevent replay of telemetry or credentials to redirect targets.
+- Redact ExporterConfig JSON/structured logging and custom JSON parser errors.
+- Preserve TLS verification, CA/mTLS loading, timeout/compression and retry behavior
+  while applying a uniform guarded HTTP client. Existing stricter upstream body limits remain.
+- Ignore private .env variants/backups and reject them from source releases.
+- Add reproducible security regressions and CI vulnerability/secret scans.
+
 
 - Add version-aware Cloud verification profiles and configuration examples for Hosted
   8.x APM, 9.0–9.5.2 Managed OTLP, 9.5.3+ Managed OTLP and Serverless.

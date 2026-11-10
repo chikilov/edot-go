@@ -169,3 +169,22 @@ Version-aware Cloud tooling (unreleased) — 2026-11-10:
   correlation PASS. No local credentials or endpoint files were changed.
 - 9.x/Serverless profiles are documentation-based, not Cloud integration claims.
   No Go SDK transport/API changes; existing release tags remain immutable.
+
+Security hardening 0.5.1 — 2026-11-10:
+- Reproduced automatic redirect replay across all six OTLP HTTP signal/protocol
+  combinations and Python Authorization forwarding using dummy local credentials.
+- Reproduced ExporterConfig JSON/slog exposure; redaction and redirect rejection fixed.
+- Custom JSON response parse errors no longer reflect server-provided values.
+- Go requirement 1.26.10, x/net 0.62.0; required x/sys/x/text transitive updates.
+- Baseline govulncheck JSON: 49 unique IDs, 34 with reported symbol call paths across
+  the library/examples. Patched text-mode scan: No vulnerabilities found.
+- Gitleaks v8.30.1 Git history scan: zero findings; actual .env modes 0600.
+- Full race suite PASS (85.336s), vet/build/tidy-diff PASS.
+- 18 Cloud Python regressions and two isolated archive security tests PASS.
+- Actual local three-protocol and Cloud 8.19.16 two-protocol storage/correlation PASS.
+- Cloud key privilege inspection found broad administrative/deletion privileges.
+  No keys/roles or local secret files were changed; least-privilege role examples
+  and separate verification read-key support were prepared. This operational risk
+  remains until the user replaces/restricts the key.
+- See SECURITY.md for scope, residual raw-upstream-error/telemetry policies and
+  unscanned container/IAM surfaces. No claim of exhaustive security assurance.

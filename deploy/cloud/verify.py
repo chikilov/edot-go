@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Load a local dotenv file without executing it; run sanitized Cloud checks."""
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -27,7 +28,7 @@ def settings(path, target=None):
         if '=' not in line:
             raise ValueError('expected KEY=value lines in Cloud configuration')
         key, value = line.split('=', 1)
-        if (not key.startswith(PREFIXES) and key not in ('ELASTICSEARCH_URL', 'KIBANA_URL', 'ELASTIC_STACK_VERSION', 'ELASTIC_DEPLOYMENT')) or not key.replace('_', '').isalnum():
+        if (not key.startswith(PREFIXES) and key not in ('ELASTICSEARCH_URL', 'KIBANA_URL', 'ELASTIC_STACK_VERSION', 'ELASTIC_DEPLOYMENT', 'ELASTICSEARCH_API_KEY')) or not key.replace('_', '').isalnum():
             raise ValueError('unsupported Cloud configuration variable')
         value = value.strip()
         if value[:1] in ('"', "'"):
@@ -60,13 +61,36 @@ def settings(path, target=None):
             es = urllib.parse.urlsplit(values[url_key])
             if es.scheme != 'https' or not es.hostname or es.username or es.password or es.query or es.fragment or es.path not in ('', '/'):
                 raise ValueError('lookup requires an HTTPS origin URL without embedded credentials or UI paths')
+    if values.get('ELASTICSEARCH_API_KEY'):
+        try:
+            decoded = base64.b64decode(values['ELASTICSEARCH_API_KEY'], validate=True)
+            if b':' not in decoded or not decoded.split(b':', 1)[0] or not decoded.split(b':', 1)[1]:
+                raise ValueError('invalid lookup key')
+        except (ValueError, TypeError):
+            raise ValueError('ELASTICSEARCH_API_KEY must be a Base64 encoded id:key value') from None
     return values
+
+
+def lookup_authorization(values):
+    if values.get('ELASTICSEARCH_API_KEY'):
+        return 'ApiKey '+values['ELASTICSEARCH_API_KEY']
+    return urllib.parse.unquote(values['OTEL_EXPORTER_OTLP_HEADERS']).split('=', 1)[1]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Even same-host redirects can cross trust boundaries or downgrade TLS.
+        return None
+
+
+def open_cloud_request(request, timeout=15):
+    return urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout)
 
 
 def observe_version(values):
     if not values.get('ELASTICSEARCH_URL') and not values.get('KIBANA_URL'):
         return None
-    auth = urllib.parse.unquote(values['OTEL_EXPORTER_OTLP_HEADERS']).split('=', 1)[1]
+    auth = lookup_authorization(values)
     if not auth.lower().startswith('apikey '):
         return None
     headers = {'Authorization': auth}
@@ -78,7 +102,7 @@ def observe_version(values):
         headers['kbn-xsrf'] = 'cloudcheck'
     try:
         req = urllib.request.Request(url, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with open_cloud_request(req, timeout=15) as response:
             version = json.loads(response.read(2*1024*1024))['version']['number']
         # Do not expose arbitrary server-returned text in the report.
         from compatibility import parse_version
@@ -92,7 +116,7 @@ def observe_version(values):
 def indexed(values, target, tid, started):
     if not values.get('ELASTICSEARCH_URL') and not values.get('KIBANA_URL'):
         return {'verified': False, 'reason': 'Elasticsearch or Kibana URL not configured'}
-    auth = urllib.parse.unquote(values['OTEL_EXPORTER_OTLP_HEADERS']).split('=', 1)[1]
+    auth = lookup_authorization(values)
     if not auth.startswith('ApiKey '):
         return {'verified': False, 'reason': 'APM Bearer token cannot query Elasticsearch'}
     patterns = ('traces-apm*', 'logs-apm*', 'metrics-apm*') if target == 'apm' else ('traces-*.otel-*', 'logs-*.otel-*', 'metrics-*.otel-*')
@@ -105,7 +129,7 @@ def indexed(values, target, tid, started):
             url = values['KIBANA_URL'].rstrip('/')+'/api/console/proxy?'+urllib.parse.urlencode({'path': pattern+'/_search', 'method': 'POST'})
             headers['kbn-xsrf'] = 'cloudcheck'
         req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with open_cloud_request(req, timeout=15) as response:
             return json.loads(response.read(2*1024*1024))['hits']['hits']
 
     until = time.monotonic()+90
@@ -126,7 +150,7 @@ def indexed(values, target, tid, started):
                 return {'verified': True, 'trace_documents': 1, 'correlated_log_documents': 1, 'metric_document_found': True}
         except urllib.error.HTTPError as error:
             if error.code in (401, 403):
-                return {'verified': False, 'reason': 'existing ingestion key has no Elasticsearch read access'}
+                return {'verified': False, 'reason': 'lookup key has no Elasticsearch read access'}
             if error.code not in (404, 429, 500, 502, 503, 504):
                 return {'verified': False, 'reason': 'Elasticsearch query rejected'}
         except (OSError, ValueError, KeyError):
@@ -178,7 +202,7 @@ def main():
         print(json.dumps({'result': 'PREFLIGHT_PASS', 'compatibility': plan, 'telemetry_sent': False}))
         return 0
     target = plan['target']
-    env = {k: v for k, v in os.environ.items() if not k.startswith(PREFIXES)}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(PREFIXES) and k != 'ELASTICSEARCH_API_KEY'}
     env.update({k: v for k, v in values.items() if k.startswith(PREFIXES)})
     protocols = args.protocol or [values.get('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf')]
     if any(p not in ('http/protobuf', 'grpc', 'http/json') for p in protocols):

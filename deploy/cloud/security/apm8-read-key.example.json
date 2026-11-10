@@ -1,0 +1,13 @@
+{
+  "name": "edot-go-apm8-verification-read",
+  "expiration": "7d",
+  "role_descriptors": {
+    "apm_verification_read": {
+      "cluster": ["monitor"],
+      "indices": [
+        {"names": ["traces-apm*", "logs-apm*", "metrics-apm*"], "privileges": ["read", "view_index_metadata"]}
+      ],
+      "applications": []
+    }
+  }
+}
