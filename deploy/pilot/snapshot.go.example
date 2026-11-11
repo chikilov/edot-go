@@ -1,0 +1,49 @@
+// Copy into the selected service package after reviewing its startup/shutdown wiring.
+// No listener or global provider changes. The caller owns a private output file.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"runtime"
+	"time"
+
+	edotgo "github.com/chikilov/edot-go"
+)
+
+func recordTelemetryPilot(ctx context.Context, sdk *edotgo.SDK, output io.Writer, interval time.Duration) error {
+	if interval < time.Second {
+		interval = 30 * time.Second
+	}
+	encoder := json.NewEncoder(output)
+	sample := func() error {
+		var memory runtime.MemStats
+		runtime.ReadMemStats(&memory) // No forced GC during real application observation.
+		return encoder.Encode(struct {
+			Time           time.Time          `json:"time"`
+			PID            int                `json:"pid"`
+			SDKVersion     string             `json:"sdk_version"`
+			GoVersion      string             `json:"go_version"`
+			HeapAllocBytes uint64             `json:"heap_alloc_bytes"`
+			Goroutines     int                `json:"goroutines"`
+			Diagnostics    edotgo.Diagnostics `json:"diagnostics"`
+		}{time.Now().UTC(), os.Getpid(), edotgo.Version, runtime.Version(), memory.HeapAlloc, runtime.NumGoroutine(), sdk.Diagnostics()})
+	}
+	if err := sample(); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := sample(); err != nil {
+				return err
+			}
+		}
+	}
+}

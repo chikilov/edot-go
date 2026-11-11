@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Generate local-only secrets without printing or committing them."""
 from pathlib import Path
-import os,platform,secrets
+import json, os, platform, re, secrets, tempfile
+
+from verify import load_settings
 
 root=Path(__file__).resolve().parent
 target=root/'.env'
@@ -26,3 +28,46 @@ else:
     with os.fdopen(fd,'w') as f:
         for key,value in fields.items():f.write(f'{key}="{value}"\n')
     print('Generated local .env (mode 0600); credentials were not printed')
+
+# Keep the existing password for persistent Elasticsearch volumes.
+values = load_settings()
+elastic = values['ES_LOCAL_PASSWORD']
+kibana = values['KIBANA_LOCAL_PASSWORD']
+if not all(re.fullmatch(r'[A-Za-z0-9_-]+', value) for value in (elastic, kibana)):
+    raise SystemExit('Local passwords must use letters, digits, underscore or hyphen')
+secret_dir = root / '.env.secrets'
+secret_dir.mkdir(mode=0o700, exist_ok=True)
+if secret_dir.is_symlink() or secret_dir.stat().st_mode & 0o077:
+    raise SystemExit('Local secret directory must be private and must not be a symlink')
+
+files = {
+    'elastic-password': elastic,
+    'elastic-netrc': f'machine elasticsearch login elastic password {elastic}\n',
+    'kibana-config': json.dumps({
+        'server.host': '0.0.0.0',
+        'server.shutdownTimeout': '5s',
+        'elasticsearch.password': kibana,
+        'xpack.encryptedSavedObjects.encryptionKey': values['KIBANA_ENCRYPTION_KEY'],
+    }),
+    'kibana-password-json': json.dumps({'password': kibana}),
+    # JSON is valid YAML. The Collector merges this fragment with its base config.
+    'collector-auth': json.dumps({
+        'extensions': {'apmconfig': {'source': {'elasticsearch': {
+            'endpoint': f'http://elastic:{elastic}@elasticsearch:9200',
+        }}}},
+        'exporters': {'elasticsearch/otel': {'password': elastic}},
+    }),
+}
+for name, content in files.items():
+    destination = secret_dir / name
+    if destination.is_file() and not destination.is_symlink() and destination.read_text() == content:
+        if destination.stat().st_mode & 0o077:
+            raise SystemExit('Local secret files must be private')
+        continue
+    fd, temporary = tempfile.mkstemp(dir=secret_dir)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            output.write(content)
+        os.replace(temporary, secret_dir / name)
+    finally:
+        Path(temporary).unlink(missing_ok=True)

@@ -60,3 +60,10 @@ OTEL_GO_X_OBSERVABILITY=true go run ./examples/queuediagnostics
   기존 인스턴스 snapshot의 큐 available 플래그는 계속 false입니다.
 - 실험적 upstream schema가 바뀌면 이름을 확인해 parser와 실제 queue 테스트를 함께 갱신합니다.
   resource·payload·관련 없는 속성은 출력하지 않습니다.
+
+## Collector 전송 큐
+
+`python3 deploy/local/queue_status.py`는 로컬 Collector의 Prometheus 지표를
+읽어 exporter·신호별 깊이, 용량, 사용률과 관측된 전송 실패 카운터를
+출력합니다. SDK processor 큐와 Collector 전송 큐는 각각의 범위를 가집니다.
+설정과 장애 복구 검증 명령은 [로컬 안내](deploy/local/README.md)를 참고하세요.

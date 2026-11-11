@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"maps"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,9 @@ func (ExporterConfig) MarshalJSON() ([]byte, error) { return []byte(`{"redacted"
 
 type exporterSettings struct {
 	ExporterConfig
-	endpointIsSignal bool
+	endpointIsSignal              bool
+	secureSignal                  string
+	inheritedHeadersAcrossOrigins bool
 }
 
 func (c Config) exporterFor(signal string) exporterSettings {
@@ -61,6 +64,21 @@ func (c Config) exporterFor(signal string) exporterSettings {
 	if specific.Endpoint != "" {
 		r.Endpoint = specific.Endpoint
 		r.endpointIsSignal = true
+	}
+	if c.RequireSecureOTLP {
+		r.secureSignal = signal
+		if r.Endpoint == "" {
+			r.Endpoint = signalEnv(signal, "ENDPOINT")
+			r.endpointIsSignal = os.Getenv("OTEL_EXPORTER_OTLP_"+signal+"_ENDPOINT") != ""
+		}
+	}
+	if c.RequireSecureOTLP && r.endpointIsSignal && specific.Headers == nil &&
+		(len(common.Headers) > 0 || os.Getenv("OTEL_EXPORTER_OTLP_HEADERS") != "") {
+		commonEndpoint := common.Endpoint
+		if commonEndpoint == "" {
+			commonEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+		}
+		r.inheritedHeadersAcrossOrigins = !sameHTTPSOrigin(commonEndpoint, r.Endpoint)
 	}
 	if specific.Headers != nil {
 		r.Headers = specific.Headers
@@ -107,7 +125,46 @@ func (s exporterSettings) endpoint(signal string) string {
 	return u.String()
 }
 
+func sameHTTPSOrigin(first, second string) bool {
+	a, errA := url.Parse(first)
+	b, errB := url.Parse(second)
+	if errA != nil || errB != nil || a.Scheme != "https" || b.Scheme != "https" ||
+		a.Hostname() == "" || !strings.EqualFold(a.Hostname(), b.Hostname()) {
+		return false
+	}
+	portA, portB := a.Port(), b.Port()
+	if portA == "" {
+		portA = "443"
+	}
+	if portB == "" {
+		portB = "443"
+	}
+	return portA == portB
+}
+
 func (s exporterSettings) validate() error {
+	if s.inheritedHeadersAcrossOrigins {
+		return fmt.Errorf("secure OTLP requires explicit signal headers when overriding the common endpoint origin")
+	}
+	if s.secureSignal != "" {
+		u, err := url.Parse(s.Endpoint)
+		if err != nil || u.Scheme != "https" {
+			return fmt.Errorf("secure OTLP requires an explicit HTTPS endpoint")
+		}
+		for _, key := range []string{"OTEL_EXPORTER_OTLP_INSECURE", "OTEL_EXPORTER_OTLP_" + s.secureSignal + "_INSECURE"} {
+			if value := os.Getenv(key); value != "" {
+				insecure, err := strconv.ParseBool(value)
+				if err != nil || insecure {
+					return fmt.Errorf("secure OTLP rejects insecure exporter settings")
+				}
+			}
+		}
+		if t := s.TLSConfig; t != nil && (t.InsecureSkipVerify ||
+			t.MinVersion != 0 && t.MinVersion < tls.VersionTLS12 ||
+			t.MaxVersion != 0 && t.MaxVersion < tls.VersionTLS12) {
+			return fmt.Errorf("secure OTLP requires certificate verification and TLS 1.2 or newer")
+		}
+	}
 	switch s.Protocol {
 	case "http/protobuf", "http/json", "grpc":
 	default:

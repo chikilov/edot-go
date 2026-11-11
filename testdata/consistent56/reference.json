@@ -1,0 +1,32 @@
+{
+  "java_sampler": "io.opentelemetry.contrib:opentelemetry-consistent-sampling:1.61.0-alpha",
+  "java_otel": "1.66.0",
+  "seed": 420,
+  "cases": 210,
+  "artifacts": [
+    {
+      "file": "opentelemetry-api-1.66.0.jar",
+      "sha512": "d00c833dc6fec3a703c0952a0b7285ed86ae6d6b8e0b800762d8e3b56f4f2249eae644396a6f651db3c8f9471df2eac92523dea1793a5bcdf93ac9c2aeafcf61"
+    },
+    {
+      "file": "opentelemetry-common-1.66.0.jar",
+      "sha512": "ae27b03673de208b7db8791de577417364e5dca7a174e441193b860ca457d849e5ee837f11f83b91af50a1269598aef847cf999a8c10936e0e5ba02127e30368"
+    },
+    {
+      "file": "opentelemetry-consistent-sampling-1.61.0-alpha.jar",
+      "sha512": "6bb610e5767e81eb249607e533beb9dcafa731c42b838b81b0f72c341840ae4f3cd9d3f633157b0c239bcc72bfe552b398ad65c9ba411989c62a07bfba46d41a"
+    },
+    {
+      "file": "opentelemetry-context-1.66.0.jar",
+      "sha512": "9e6fb540157b70b04a6bd96bc9ef3b666d04665ffea201c46954a0c5f4ed79fe0653adb6b9140b41f445f03c46d7106b6d882b50cb09d4b7e880f18b377fcae2"
+    },
+    {
+      "file": "opentelemetry-sdk-common-1.66.0.jar",
+      "sha512": "b86f42fea8829fbe8ac217739e14c673bb53aaad862359b32b562b1bc417599a5279b5d1cf6ea656f9e5ce7bd0a99fae7275cfa9d6c39f7790d6dd858bb4e0f1"
+    },
+    {
+      "file": "opentelemetry-sdk-trace-1.66.0.jar",
+      "sha512": "4474fb2727e3d2e9cf00bc37c69f7236ae2b25194da47c1180af0a42c892d8f18419b31760ec94c284fea349a146f4e1ee2d70e3dfcb81180e7dfe87ea9cebed"
+    }
+  ]
+}

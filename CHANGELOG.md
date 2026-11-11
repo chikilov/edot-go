@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Add gRPC, database/sql and franz-go instrumentation helpers.
+- Add HTTPS runtime configuration and OpAMP elastic configuration handling with
+  validation, status reporting and restoration of removed settings.
+- Add consistent56 sampling checked against 210 Java reference vectors.
+- Support explicit resource detectors and native-process pilot observation tools.
+- Add Collector persistent queues, exporter-specific retry settings, queue status
+  reporting and an isolated restart recovery smoke test.
+- Require Go >=1.26.11 and klauspost/compress >=1.20.2 for security fixes.
+- Add strict OTLP TLS/origin policy and file-mounted local service credentials.
+- Separate Cloud verification build/runtime credentials and require a dedicated
+  lookup credential for version/storage queries.
+- Update installation instructions for the public repository.
+
 ## 0.5.1
 
 Security patch. Go >=1.26.10 and golang.org/x/net v0.62.0 are required; x/sys

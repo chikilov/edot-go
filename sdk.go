@@ -80,7 +80,12 @@ func New(ctx context.Context, c Config) (result *SDK, err error) {
 		s.LoggerProvider = sdklog.NewLoggerProvider()
 		return s, nil
 	}
-	r, err := resource.New(ctx, resource.WithTelemetrySDK(), resource.WithHost(), resource.WithProcessPID(), resource.WithProcessRuntimeName(), resource.WithProcessRuntimeVersion(), resource.WithFromEnv())
+	resourceOptions := []resource.Option{
+		resource.WithTelemetrySDK(), resource.WithHost(), resource.WithProcessPID(),
+		resource.WithProcessRuntimeName(), resource.WithProcessRuntimeVersion(),
+	}
+	resourceOptions = append(resourceOptions, resource.WithDetectors(c.ResourceDetectors...), resource.WithFromEnv())
+	r, err := resource.New(ctx, resourceOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("detect resources: %w", err)
 	}
@@ -166,7 +171,7 @@ func (s *SDK) InstallGlobals() {
 }
 
 func (s *SDK) SetSampleRatio(ratio float64) error {
-	if s.sampler.name != "traceidratio" && s.sampler.name != "parentbased_traceidratio" {
+	if s.sampler.name != "traceidratio" && s.sampler.name != "parentbased_traceidratio" && s.sampler.name != "experimental_composite_parentbased_traceidratio" {
 		return fmt.Errorf("sample ratio is only adjustable for ratio samplers")
 	}
 	return s.sampler.setRatio(ratio)

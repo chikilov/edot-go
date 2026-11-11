@@ -233,7 +233,7 @@ func TestDynamicSamplerAndParents(t *testing.T) {
 
 func TestConfigValidation(t *testing.T) {
 	for _, tt := range []struct{ k, v string }{
-		{"OTEL_TRACES_SAMPLER_ARG", "NaN"}, {"OTEL_TRACES_SAMPLER_ARG", "1.1"}, {"OTEL_TRACES_SAMPLER", "experimental_composite_parentbased_traceidratio"},
+		{"OTEL_TRACES_SAMPLER_ARG", "NaN"}, {"OTEL_TRACES_SAMPLER_ARG", "1.1"}, {"OTEL_TRACES_SAMPLER", "unsupported_composite_sampler"},
 		{"OTEL_EXPORTER_OTLP_PROTOCOL", "invalid"}, {"OTEL_LOGS_EXPORTER", "console"}, {"EDOT_GO_SPAN_STACKTRACE_MIN_DURATION", "garbage"},
 		{"EDOT_GO_SPAN_ATTRIBUTES_COPY_FROM_BAGGAGE_INCLUDE", "["}, {"OTEL_SDK_DISABLED", "invalid"},
 	} {

@@ -12,10 +12,18 @@ and roughly 6–8 GB of Docker VM memory. Images may require several GB of disk 
 ./deploy/local/stop.sh
 ```
 
+Starting recreates containers to refresh inline configuration and secret mounts.
 Stopping preserves volumes. Do not delete `.env` while keeping an existing volume:
 Elasticsearch stores the bootstrap password in its data; generating a different
 password does not reset existing users. The local `.env` is gitignored and contains
 random passwords. Keep it private and back it up together with local data if needed.
+On startup, `prepare.py` creates private files in the ignored `.env.secrets/` directory.
+Compose mounts them for Elasticsearch bootstrap, curl authentication and the
+Collector configuration overlay. Kibana loads its service password and
+saved-object encryption key from a private, read-only configuration file. For an existing stack or after changing secret files, run
+`docker compose --project-directory deploy/local up -d --force-recreate --wait`
+to refresh the secret mounts. On Linux, the container users must have read access to
+their mounted files. Keep that access limited to the intended user.
 
 | Service | Address |
 |---|---|
@@ -102,3 +110,37 @@ python3 deploy/local/soak.py --duration 300 --rate 25 --output /tmp/edot-soak.js
 
 최소 5분 실행은 장애 복구 회귀 검증이며, 24시간 수준의 운영 soak를 대체하지 않습니다.
 보고서에는 합성 trace ID와 진단 통계만 들어가며 인증정보는 포함하지 않습니다.
+
+## 장애 중 전송 대기 데이터 보존
+
+Collector의 `elasticsearch/otel` exporter는 `file_storage`와 Compose
+볼륨 `dev-collector-queue`를 사용합니다. 큐 한도는 전송 요청 1,000개이며
+일시적인 전송 실패는 최대 60회 재시도하며 대기 간격은 최대 30초입니다. Collector를 다시
+시작할 때 같은 볼륨을 유지해야 남은 요청을 복구할 수 있습니다.
+
+디스크 큐에는 텔레메트리 내용이 저장됩니다. 볼륨 디렉터리는 Collector
+사용자 전용 권한으로 초기화합니다. 큐 진입 전의 SDK·Collector 메모리
+배치, 용량 초과, 영구 오류 및 재시도 횟수 초과는 손실 가능성이 있습니다.
+전송 재시도로 중복이 생길 수 있습니다.
+
+## Collector 큐 관측
+
+```bash
+python3 deploy/local/queue_status.py
+python3 deploy/local/queue_status.py --file /path/to/collector-metrics.txt
+```
+
+적용된 로컬 스택은 Collector 메트릭을 `127.0.0.1:8888/metrics`에서
+제공합니다. 도구는 exporter·신호별 큐 깊이, 용량, 사용률과 관측된 전송·
+enqueue 실패 누적값만 출력합니다. 미관측 필드는 생략하며 사용률은
+`null`로 표시합니다. 중복된 시계열은 합산하지 않고
+`ambiguous_metrics`에 표시합니다. Collector 재시작 시 누적값이 초기화될
+수 있고, 재시도 실패 횟수는 최종 데이터 손실량과 다릅니다.
+
+Docker Desktop에서 `python3 deploy/local/verify_queue_replay.py`를 실행하면
+별도 임시 컨테이너·볼륨과 합성 수신기로 큐 관측 및 강제 종료 후
+재전송을 검증합니다. 테스트 자원은 종료 시 삭제됩니다.
+
+Elasticsearch exporter의 `retry` 설정은 HTTP 요청과 bulk 응답의 재시도를
+제어합니다. 현재 설정은 429·502·503·504 응답도 재시도합니다. 연결 오류
+등의 전송 재시도는 중복 저장 가능성이 있어 조회 시 이를 고려해야 합니다.

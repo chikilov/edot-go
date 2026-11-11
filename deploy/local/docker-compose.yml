@@ -6,10 +6,13 @@ configs:
   edot-collector-config:
     content: |
       extensions:
+        file_storage:
+          directory: /usr/share/elastic-agent/data/export-queue
+          create_directory: true
+          fsync: true
         apmconfig:
           source:
             elasticsearch:
-              endpoint: http://elastic:${ES_LOCAL_PASSWORD}@elasticsearch:9200
               cache_duration: 10s
           opamp:
             protocols:
@@ -43,12 +46,30 @@ configs:
           endpoints:
             - http://elasticsearch:9200
           user: elastic
-          password: ${ES_LOCAL_PASSWORD}
+          sending_queue:
+            enabled: true
+            storage: file_storage
+            queue_size: 1000
+          retry:
+            enabled: true
+            max_retries: 60
+            initial_interval: 1s
+            max_interval: 30s
+            retry_on_status: [429, 502, 503, 504]
           mapping:
             mode: otel
 
       service:
-        extensions: [ apmconfig ]
+        telemetry:
+          metrics:
+            level: normal
+            readers:
+              - pull:
+                  exporter:
+                    prometheus:
+                      host: 0.0.0.0
+                      port: 8888
+        extensions: [ apmconfig, file_storage ]
         pipelines:
           metrics:
             receivers: [otlp]
@@ -83,7 +104,7 @@ services:
       - model-runner.docker.internal:host-gateway
     environment:
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=${ES_LOCAL_PASSWORD}
+      - ELASTIC_PASSWORD_FILE=/run/secrets/elastic-password
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=false
       - xpack.license.self_generated.type=basic
@@ -93,6 +114,7 @@ services:
       - cluster.routing.allocation.disk.watermark.high=${ES_LOCAL_DISK_SPACE_REQUIRED}
       - cluster.routing.allocation.disk.watermark.flood_stage=${ES_LOCAL_DISK_SPACE_REQUIRED}
       - "_JAVA_OPTIONS=-XX:UseSVE=0"
+    secrets: [elastic-password, elastic-netrc]
     ulimits:
       memlock:
         soft: -1
@@ -101,7 +123,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl --noproxy '*' --output /dev/null --silent --head --fail -u elastic:${ES_LOCAL_PASSWORD} http://elasticsearch:9200",
+          "curl --noproxy '*' --output /dev/null --silent --head --fail --netrc-file /run/secrets/elastic-netrc http://elasticsearch:9200",
         ]
       interval: 10s
       timeout: 10s
@@ -114,12 +136,13 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ES_LOCAL_VERSION}
     container_name: ${KIBANA_LOCAL_SETTINGS_CONTAINER_NAME}
     restart: 'no'
+    secrets: [elastic-netrc, kibana-password-json]
     command: >
       bash -c '
         echo "Setup the kibana_system password";
         start_time=$$(date +%s);
         timeout=60;
-        until curl --noproxy "*" -s -u "elastic:${ES_LOCAL_PASSWORD}" -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_LOCAL_PASSWORD}\"}" -H "Content-Type: application/json" | grep -q "^{}"; do
+        until curl --noproxy "*" -fsS --netrc-file /run/secrets/elastic-netrc -X POST http://elasticsearch:9200/_security/user/kibana_system/_password --data-binary @/run/secrets/kibana-password-json -H "Content-Type: application/json" | grep -q "^{}"; do
           if [ $$(($$(date +%s) - $$start_time)) -ge $$timeout ]; then
             echo "Error: Elasticsearch timeout";
             exit 1;
@@ -134,6 +157,9 @@ services:
         condition: service_completed_successfully
     image: docker.elastic.co/kibana/kibana:${ES_LOCAL_VERSION}
     container_name: ${KIBANA_LOCAL_CONTAINER_NAME}
+    secrets:
+      - source: kibana-config
+        target: /usr/share/kibana/config/kibana.yml
     volumes:
       - dev-kibana:/usr/share/kibana/data
       - ./config/telemetry.yml:/usr/share/kibana/config/telemetry.yml
@@ -147,8 +173,6 @@ services:
       - TELEMETRY_ENABLED=false
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_LOCAL_PASSWORD}
-      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
       - ELASTICSEARCH_PUBLICBASEURL=http://localhost:${ES_LOCAL_PORT}
       - MONITORING_UI_CONTAINER_ELASTICSEARCH_ENABLED=true
       - XPACK_SPACES_DEFAULTSOLUTION=oblt
@@ -162,15 +186,30 @@ services:
       timeout: 10s
       retries: 30
 
+  collector-queue-init:
+    image: docker.elastic.co/elastic-agent/elastic-otel-collector:${ES_LOCAL_VERSION}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["chown 1000:1000 /queue && chmod 0700 /queue"]
+    restart: 'no'
+    volumes:
+      - dev-collector-queue:/queue
+
   edot-collector:
     image: docker.elastic.co/elastic-agent/elastic-otel-collector:${ES_LOCAL_VERSION}
     container_name: ${EDOT_LOCAL_CONTAINER_NAME}
     depends_on:
+      collector-queue-init:
+        condition: service_completed_successfully
       elasticsearch:
         condition: service_healthy
     command: [
       "--config=/etc/otelcol-contrib/config.yaml",
+      "--config=/run/secrets/collector-auth",
     ]
+    secrets: [collector-auth]
+    volumes:
+      - dev-collector-queue:/usr/share/elastic-agent/data/export-queue
     configs:
       - source: edot-collector-config
         target: /etc/otelcol-contrib/config.yaml
@@ -178,10 +217,24 @@ services:
       - "127.0.0.1:4317:4317"  # grpc
       - "127.0.0.1:4318:4318"  # http
       - "127.0.0.1:4320:4320"  # opamp
+      - "127.0.0.1:8888:8888"  # Collector metrics
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo -n > /dev/tcp/127.0.0.1/4317'"]
       retries: 300
       interval: 1s
+secrets:
+  elastic-password:
+    file: ./.env.secrets/elastic-password
+  elastic-netrc:
+    file: ./.env.secrets/elastic-netrc
+  kibana-password-json:
+    file: ./.env.secrets/kibana-password-json
+  kibana-config:
+    file: ./.env.secrets/kibana-config
+  collector-auth:
+    file: ./.env.secrets/collector-auth
+
 volumes:
   dev-elasticsearch:
   dev-kibana:
+  dev-collector-queue:

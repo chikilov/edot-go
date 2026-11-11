@@ -3,6 +3,7 @@ package edotgo
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -118,5 +119,59 @@ func TestUntrustedTLSCertificateRejected(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSecureOTLPPolicy(t *testing.T) {
+	for _, protocol := range []string{"http/protobuf", "http/json", "grpc"} {
+		t.Run(protocol, func(t *testing.T) {
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example")
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "https://logs.example/v1/logs")
+			t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "")
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_INSECURE", "")
+			c := DefaultConfig()
+			c.RequireSecureOTLP = true
+			c.OTLP.Protocol = protocol
+			if protocol == "grpc" {
+				t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "https://logs.example")
+			}
+			if err := c.validate(); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "http://logs.example")
+			if err := c.validate(); err == nil {
+				t.Fatal("accepted a plaintext signal endpoint")
+			}
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "https://logs.example")
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_INSECURE", "true")
+			if err := c.validate(); err == nil {
+				t.Fatal("accepted insecure environment setting")
+			}
+			t.Setenv("OTEL_EXPORTER_OTLP_LOGS_INSECURE", "")
+			c.LogExporter.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+			if err := c.validate(); err == nil {
+				t.Fatal("accepted TLS certificate verification bypass")
+			}
+		})
+	}
+}
+
+func TestSecureOTLPRejectsCrossOriginCommonHeaders(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example")
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "authorization=synthetic")
+	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "https://other.example")
+	c := DefaultConfig()
+	c.RequireSecureOTLP = true
+	if err := c.exporterFor("LOGS").validate(); err == nil {
+		t.Fatal("accepted common headers on a different origin")
+	}
+	c.LogExporter.Headers = map[string]string{}
+	if err := c.exporterFor("LOGS").validate(); err != nil {
+		t.Fatal(err)
+	}
+	c.LogExporter.Headers = nil
+	t.Setenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "https://collector.example:443/v1/logs")
+	if err := c.exporterFor("LOGS").validate(); err != nil {
+		t.Fatal(err)
 	}
 }

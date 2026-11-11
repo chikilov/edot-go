@@ -102,5 +102,8 @@ Kibana console proxy를 통해 동일한 검색을 수행합니다. `/app/...` �
 운영 앱에는 수집 전용 key를 사용하고, 조회용 key는 검증 도구에만 설정합니다.
 `.env`의 `ELASTICSEARCH_API_KEY`에 조회 전용 key의 Base64 encoded 값을 넣으면
 Elasticsearch/Kibana 버전·저장 조회에서만 사용합니다. `ApiKey` 접두어는 붙이지 않습니다.
-조회 key는 SDK subprocess에 전달되지 않습니다. 생략하면 기존 ingestion key를 계속 사용합니다.
+조회 key는 SDK subprocess에 전달되지 않습니다. 생략하면 서버 버전과 저장 조회를 건너뜁니다. 전송 성공과 저장 확인 여부는 각각 출력합니다.
 최소 권한 예시와 현재 운영 검토 결과는 [SECURITY.md](../../SECURITY.md)를 참고하세요.
+
+The verifier builds a temporary binary without the configured OTLP credentials,
+then supplies the OTLP configuration only to that binary with strict TLS enabled.

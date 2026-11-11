@@ -1,4 +1,5 @@
 """Version boundaries and safety gates; no production endpoint or credentials."""
+import base64
 import contextlib
 import io
 import json
@@ -103,7 +104,7 @@ class CompatibilityTests(unittest.TestCase):
                 self.assertEqual(json.loads(output.getvalue())['compatibility']['profile'], '9.5.3+-managed')
 
     def test_version_probe_never_exposes_arbitrary_server_content(self):
-        values = {'ELASTICSEARCH_URL': 'https://search.example.invalid', 'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
+        values = {'ELASTICSEARCH_URL': 'https://search.example.invalid', 'ELASTICSEARCH_API_KEY': base64.b64encode(b'synthetic:read').decode()}
         with patch.object(verify, 'open_cloud_request', return_value=io.BytesIO(json.dumps({'version': {'number': 'private-server-secret'}}).encode())):
             self.assertIsNone(verify.observe_version(values))
         with patch.object(verify, 'open_cloud_request', side_effect=urllib.error.HTTPError('https://search.example.invalid', 403, 'denied', {}, None)):

@@ -9,19 +9,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/sdk/resource"
 )
 
 // Config describes the portable subset of EDOT Java configuration.
 // Explicit exporter settings override exporter environment variables without
 // mutating process environment or replacing global OpenTelemetry handlers.
 type Config struct {
-	OTLP           ExporterConfig
-	TraceExporter  ExporterConfig
-	MetricExporter ExporterConfig
-	LogExporter    ExporterConfig
-	TraceBatch     BatchConfig
-	LogBatch       BatchConfig
-	MetricReader   MetricReaderConfig
+	// ResourceDetectors adds explicit cloud/platform detectors. Detectors receive
+	// the initialization context. Environment attributes override detected values.
+	ResourceDetectors []resource.Detector
+	// RequireSecureOTLP requires HTTPS and certificate verification for every enabled exporter.
+	RequireSecureOTLP bool
+	OTLP              ExporterConfig
+	TraceExporter     ExporterConfig
+	MetricExporter    ExporterConfig
+	LogExporter       ExporterConfig
+	TraceBatch        BatchConfig
+	LogBatch          BatchConfig
+	MetricReader      MetricReaderConfig
 	// OnExportError runs synchronously on an exporter goroutine. Keep it fast;
 	// do not call ForceFlush/Shutdown or export telemetry from this callback.
 	// Different signals may invoke it concurrently. Panics are counted and recovered.
@@ -50,6 +57,13 @@ func DefaultConfig() Config {
 // fail explicitly instead of silently sending data to an unexpected destination.
 func ConfigFromEnv() (Config, error) {
 	c := DefaultConfig()
+	if value := os.Getenv("EDOT_GO_REQUIRE_SECURE_OTLP"); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return c, fmt.Errorf("EDOT_GO_REQUIRE_SECURE_OTLP: expected boolean")
+		}
+		c.RequireSecureOTLP = enabled
+	}
 	c.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
 	if v := os.Getenv("OTEL_TRACES_SAMPLER"); v != "" {
 		c.Sampler = v
@@ -130,7 +144,7 @@ func (c Config) validate() error {
 		return fmt.Errorf("sample ratio must be between 0 and 1")
 	}
 	switch c.Sampler {
-	case "always_on", "always_off", "traceidratio", "parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio":
+	case "experimental_composite_parentbased_traceidratio", "always_on", "always_off", "traceidratio", "parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio":
 	default:
 		return fmt.Errorf("unsupported sampler %q", c.Sampler)
 	}

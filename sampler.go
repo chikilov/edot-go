@@ -10,12 +10,15 @@ import (
 )
 
 // dynamicSampler uses an immutable delegate, swapped atomically at runtime.
-// It uses Go's TraceIDRatioBased, not Java's consistent56 implementation.
+// Delegates include standard Go samplers and the opt-in consistent56 sampler.
 type dynamicSampler struct {
 	name     string
 	delegate atomic.Pointer[samplerHolder]
 }
-type samplerHolder struct{ sampler sdktrace.Sampler }
+type samplerHolder struct {
+	sampler sdktrace.Sampler
+	ratio   float64
+}
 
 func newSampler(name string, ratio float64) *dynamicSampler {
 	s := &dynamicSampler{name: name}
@@ -32,6 +35,8 @@ func (s *dynamicSampler) setRatio(ratio float64) error {
 		d = sdktrace.AlwaysSample()
 	case "always_off":
 		d = sdktrace.NeverSample()
+	case "experimental_composite_parentbased_traceidratio":
+		d = newConsistentParentSampler(ratio)
 	case "traceidratio":
 		d = sdktrace.TraceIDRatioBased(ratio)
 	case "parentbased_always_on":
@@ -41,7 +46,7 @@ func (s *dynamicSampler) setRatio(ratio float64) error {
 	default:
 		d = sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))
 	}
-	s.delegate.Store(&samplerHolder{d})
+	s.delegate.Store(&samplerHolder{sampler: d, ratio: ratio})
 	return nil
 }
 func (s *dynamicSampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {

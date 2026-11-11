@@ -10,7 +10,7 @@ Elastic EDOT Java의 플랫폼 독립적인 SDK 커스터마이징을 Go로 옮�
 
 ## 요구사항
 
-- Go **1.26.10 이상**. 알려진 표준 라이브러리 보안 패치를 포함하는 최소 버전입니다. `GOTOOLCHAIN=auto`이면 도구 체인이 자동 다운로드될 수 있습니다.
+- Go **1.26.11 이상**. 알려진 표준 라이브러리 보안 패치를 포함하는 최소 버전입니다. `GOTOOLCHAIN=auto`이면 도구 체인이 자동 다운로드될 수 있습니다.
 - Elastic Cloud의 **Managed OTLP Endpoint** 또는 선택한 OTLP 프로토콜을 받는 Collector.
 - 전송 프로토콜: **http/protobuf**(기본값), **grpc**(protobuf), **http/json**. 세 신호 모두 지원합니다.
 
@@ -46,15 +46,12 @@ Cloud 인증은 Collector 쪽에서 설정할 수 있습니다.
 
 ## 앱에 적용
 
-모듈 경로는 `github.com/chikilov/edot-go`입니다. 비공개 저장소 접근 권한이 있는 GitHub 계정으로
-Git 인증을 설정한 뒤 사용하세요.
+모듈 경로는 `github.com/chikilov/edot-go`이며 저장소는 공개되어 있습니다.
 
 ```bash
-go env -w GOPRIVATE=github.com/chikilov/edot-go
 go get github.com/chikilov/edot-go@main
 ```
 
-이미 GOPRIVATE 값이 있다면 기존 패턴을 유지하면서 위 경로를 추가하세요.
 다른 로컬 프로젝트에서 연결하려면 다음처럼 설정할 수 있습니다.
 
 ```bash
@@ -86,6 +83,27 @@ _ = client
 앱 시작 시 한 번 `sdk.InstallGlobals()`를 호출하세요. 종료 시 이전 전역 provider로 복원하지 않습니다.
 서로 다른 에이전트/SDK를 같은 요청에 중복 적용하면 중복 span이 발생할 수 있습니다.
 
+## gRPC, SQL, Kafka 계측
+
+서비스를 구성할 때 SDK 인스턴스의 옵션을 전달하면 각 RPC에 스팬과
+메트릭을 기록하고 요청의 trace context를 전파합니다. 기존 서버 및
+클라이언트 옵션에 추가하세요.
+
+```go
+server := grpc.NewServer(sdk.GRPCServerOption())
+client, err := grpc.NewClient(target, transportCredentials, sdk.GRPCClientOption())
+```
+
+`transportCredentials`는 기존 `grpc.WithTransportCredentials(...)` 옵션입니다.
+DB 드라이버가 제공하는 `driver.Connector`가 있다면
+`db := sdk.OpenSQLDB(connector)`로 연결 풀을 생성합니다. 앱이 `db.Close()`를
+호출하고, 요청 스팬과 연결하려면 `ExecContext`나 `QueryContext`에 요청
+context를 전달합니다. SQL 문과 드라이버 오류 메시지는 스팬에서 제외합니다.
+
+Kafka에서 franz-go를 사용하면 `kgo.NewClient`의 기존 옵션에
+`sdk.KafkaOption()`을 추가하세요. 생산 호출에는 요청 context를 전달합니다.
+훅은 W3C trace context를 전파하고 레코드 키와 baggage는 제외합니다.
+
 ## 설정
 
 | 환경변수 | 기본값 / 의미 |
@@ -106,7 +124,10 @@ _ = client
 | `EDOT_GO_LOG_ATTRIBUTES_COPY_FROM_BAGGAGE_INCLUDE` | 빈 값, 허용한 키만 log 속성에 복사 |
 
 추가 sampler: `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`.
-Java의 `experimental_composite_parentbased_traceidratio`는 지원하지 않습니다.
+Java의 `experimental_composite_parentbased_traceidratio`도 지원합니다.
+이 모드는 consistent56의 56비트 임계값과 `ot=th:...;rv:...` 상태를
+사용하며 `SetSampleRatio`와 중앙 설정으로 비율을 변경할 수 있습니다.
+기존 ratio sampler와 샘플링 결정이 다를 수 있으므로 명시적으로 선택하세요.
 
 신호별 `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`, `_HEADERS`, `_TIMEOUT`,
 TLS 인증서, 압축 등은 upstream exporter 및 JSON 어댑터가 처리합니다. HTTP 공통 endpoint에는
@@ -398,3 +419,68 @@ Elastic 8.x / 9.x / Serverless별 설정 예시와 버전 검증은
 [ELASTIC_COMPATIBILITY.md](ELASTIC_COMPATIBILITY.md)에 구분했습니다.
 
 보안 검토 결과·전송 및 로그 정책은 [SECURITY.md](SECURITY.md)를 참고하세요.
+
+## 중앙 설정
+
+앱에서 `sdk.PollCentralConfig(ctx, endpoint, headers, interval, onError)`를
+goroutine에서 호출하고 SDK 종료 전에 context를 취소하세요. 설정 서버는
+HTTPS GET에 다음과 같은 JSON 객체를 반환합니다.
+
+```json
+{"sample_ratio": 0.2, "sending_traces": true, "sending_metrics": true, "sending_logs": false}
+```
+
+생략한 필드는 기존 값을 유지합니다. 샘플링 비율은 ratio sampler에서
+변경할 수 있습니다. 잘못된 설정이나 요청 실패는 기존 값을 유지합니다.
+이 API는 전용 HTTPS JSON 서버를 사용합니다. OpAMP 프로토콜 서버에는 아래 `RunOpAMP`를 사용하세요.
+
+클라우드 속성을 추가하려면 `Config.ResourceDetectors`에 사용하는 플랫폼의
+OTel `resource.Detector`를 전달하세요. 앱 초기화 context가 detector에
+전달되며, `OTEL_RESOURCE_ATTRIBUTES`와 명시한 서비스 이름이 우선합니다.
+detector 오류는 초기화 실패로 반환됩니다.
+
+## OpAMP 중앙 설정
+
+`sdk.RunOpAMP(ctx, edotgo.OpAMPConfig{...})`는 OpAMP HTTPS/protobuf 서버와
+통신하고 원격 설정의 적용 결과를 보고합니다. 앱은 설정 제어용 context를
+관리하고 SDK 종료 전에 이를 취소한 뒤 `RunOpAMP` 반환을 기다립니다.
+실행 중 하나의 SDK에는 하나의 설정 제어기를 연결하세요.
+
+```go
+err := sdk.RunOpAMP(controlContext, edotgo.OpAMPConfig{
+    Endpoint:    "https://opamp.example.com/v1/opamp",
+    ServiceName: "orders-go",
+    Environment: "production",
+    Headers: http.Header{
+        "Authorization": {"Bearer <OPAMP_CREDENTIAL>"},
+    },
+})
+```
+
+이 호출은 context 취소까지 실행됩니다. 앱의 초기화를 계속하려면
+goroutine에서 실행하고 오류 반환을 처리하세요. 기본 폴링 간격은 30초이며,
+`Interval`로 설정할 수 있습니다. `TLSConfig`로 신뢰 CA와 mTLS 인증서를
+제공할 수 있습니다. TLS 1.2 이상과 인증서 검증이 필요합니다.
+
+Java와 같은 `AgentRemoteConfig.config.config_map["elastic"]` 객체에
+다음 JSON 문자열 맵을 담습니다. 전용 JSON GET 폴링 API와는 전송 형식이
+다릅니다.
+
+```json
+{"sampling_rate":"0.2","send_traces":"true","send_metrics":"true","send_logs":"false"}
+```
+
+OpAMP의 각 설정은 전체 스냅샷입니다. 제거한 항목은 제어기 시작 당시
+값으로 복원합니다. 지원하지 않는 키, 잘못된 값, 중복 키는 실패 상태로
+보고하며 적용하지 않습니다. `sampling_rate`는 비율 변경이 가능한
+sampler를 사용해야 합니다.
+
+인증 헤더는 OpAMP용으로 별도 전달합니다. 설정 객체를 로그에 출력하면
+비밀값은 가려집니다. 네트워크와 서버 오류는 `OnError`에 가려진 메시지로
+전달할 수 있습니다. 재시도와 재연결은 공식 OpAMP 클라이언트가 처리합니다.
+기본 instance UID는 실행마다 새로 생성됩니다. 재시작 후 같은 에이전트로
+관리하려면 앱이 저장한 `InstanceUID`를 제공하세요.
+
+현재 전송은 HTTPS이며, 원격 패키지 업데이트·재시작 명령·연결 대상 변경은
+지원 범위에서 제외합니다. 실제 Elastic Cloud/Kibana에서의 설정 배포는
+별도 환경 검증이 필요합니다.

@@ -24,3 +24,14 @@ Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V., Apache-2.0.
 Source revision: 0a56d370042dc6d5032026b0173c93e94f2f1676.
 Modifications: loopback-only collector ports, Basic license, Kibana telemetry
 opt-out, random-secret preparation, and non-destructive stop command.
+
+Consistent56 sampler behavior adapted from OpenTelemetry Java Contrib
+consistent-sampling, Copyright The OpenTelemetry Authors, Apache-2.0.
+Reference version: opentelemetry-consistent-sampling 1.61.0-alpha.
+https://github.com/open-telemetry/opentelemetry-java-contrib/tree/v1.61.0/consistent-sampling
+Go adaptation includes W3C vendor state parsing, 56-bit thresholds,
+parent decisions and dynamic delegate replacement.
+
+OpAMP remote configuration uses OpenTelemetry opamp-go, Apache-2.0.
+https://github.com/open-telemetry/opamp-go
+Elastic configuration key names follow the referenced EDOT Java source.

@@ -1,4 +1,5 @@
 """Credential redaction and inherited-environment regressions; no real network."""
+import base64
 import contextlib
 import io
 import json
@@ -37,7 +38,11 @@ class CloudCheckTests(unittest.TestCase):
             process = subprocess.CompletedProcess([], 0, json.dumps({'trace_id': 'a'*32, 'diagnostics': diag}), '')
             with patch.dict(os.environ, {'OTEL_EXPORTER_OTLP_LOGS_HEADERS': 'stale-private-key', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT': 'https://wrong.invalid'}), patch('sys.argv', ['verify.py', '--env', str(path), '--target', 'apm']), patch.object(verify.subprocess, 'run', return_value=process) as run, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(verify.main(), 0)
-                env = run.call_args.kwargs['env']
+                build, launch = run.call_args_list
+                self.assertEqual(build.args[0][:2], ['go', 'build'])
+                self.assertNotIn('OTEL_EXPORTER_OTLP_HEADERS', build.kwargs['env'])
+                env = launch.kwargs['env']
+                self.assertEqual(env['EDOT_GO_REQUIRE_SECURE_OTLP'], 'true')
                 self.assertNotIn('OTEL_EXPORTER_OTLP_LOGS_HEADERS', env)
                 self.assertNotIn('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', env)
 
@@ -54,6 +59,9 @@ class CloudCheckTests(unittest.TestCase):
             path = self.config(directory, "OTEL_EXPORTER_OTLP_TRACES_HEADERS='alternate-key'\n")
             with self.assertRaises(ValueError):
                 verify.settings(path, 'apm')
+            path = self.config(directory, "OTEL_EXPORTER_OTLP_INSECURE=true\n")
+            with self.assertRaises(ValueError):
+                verify.settings(path, 'apm')
             path = self.config(directory)
             path.write_text(path.read_text().replace('https://apm.example.invalid', 'https://user:password@apm.example.invalid'))
             with self.assertRaises(ValueError):
@@ -61,7 +69,8 @@ class CloudCheckTests(unittest.TestCase):
 
     def test_indexed_trace_log_transaction_link(self):
         values = {'ELASTICSEARCH_URL': 'https://search.example.invalid',
-                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
+                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret',
+                  'ELASTICSEARCH_API_KEY': base64.b64encode(b'synthetic:read').decode()}
         tid = 'a'*32
         replies = [
             {'hits': {'hits': [{'fields': {'transaction.id': ['b'*16]}}]}},
@@ -78,7 +87,8 @@ class CloudCheckTests(unittest.TestCase):
 
     def test_kibana_lookup_uses_only_read_only_search_proxy(self):
         values = {'KIBANA_URL': 'https://kibana.example.invalid',
-                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
+                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret',
+                  'ELASTICSEARCH_API_KEY': base64.b64encode(b'synthetic:read').decode()}
         replies = [{'hits': {'hits': [{'fields': {'span.id': ['b'*16]}}]}},
                    {'hits': {'hits': [{'fields': {'span.id': ['b'*16]}}]}},
                    {'hits': {'hits': [{'_id': 'synthetic-metric'}]}}]
@@ -90,14 +100,25 @@ class CloudCheckTests(unittest.TestCase):
                 self.assertIn('%2F_search', req.full_url)
                 self.assertEqual(req.get_header('Kbn-xsrf'), 'cloudcheck')
 
-    def test_ingestion_key_without_read_access_stays_unverified(self):
+    def test_lookup_key_without_read_access_stays_unverified(self):
         values = {'ELASTICSEARCH_URL': 'https://search.example.invalid',
-                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
+                  'ELASTICSEARCH_API_KEY': base64.b64encode(b'synthetic:read').decode()}
         denied = urllib.error.HTTPError('https://search.example.invalid', 403, 'Forbidden', {}, None)
         with patch.object(verify, 'open_cloud_request', side_effect=denied):
             result = verify.indexed(values, 'apm', 'a'*32, '2026-11-09T00:00:00Z')
             self.assertFalse(result['verified'])
             self.assertIn('no Elasticsearch read access', result['reason'])
+
+    def test_ingestion_key_is_never_used_for_lookup(self):
+        values = {'ELASTICSEARCH_URL': 'https://search.example.invalid',
+                  'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=ApiKey%20synthetic-secret'}
+        with patch.object(verify, 'open_cloud_request') as request:
+            self.assertIsNone(verify.observe_version(values))
+            result = verify.indexed(values, 'apm', 'a'*32, '2026-11-09T00:00:00Z')
+            self.assertFalse(result['verified'])
+            self.assertIn('ELASTICSEARCH_API_KEY', result['reason'])
+            request.assert_not_called()
+
 
 
 

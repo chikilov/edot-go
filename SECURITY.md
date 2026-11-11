@@ -50,7 +50,7 @@ ELASTICSEARCH_API_KEY='조회전용_encoded_key'
 
 `ELASTICSEARCH_API_KEY`에는 `ApiKey` 접두어 없이 Base64 `id:key`의 encoded 값을 넣습니다.
 지정하면 버전/저장 조회에서만 쓰며 SDK subprocess에 전달하거나 출력하지 않습니다.
-생략하면 이전 호환 동작으로 ingestion key를 조회에도 사용합니다.
+생략하면 서버 버전과 저장 조회를 건너뜁니다.
 운영에서의 권장 구성은 두 key를 분리하는 것입니다. 실제 설정 파일은 자동 수정하지 않습니다.
 
 ## 남는 경계와 운영 설정
@@ -97,3 +97,20 @@ otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) {
 [HTTP/2 관련 예: GO-2026-6611](https://pkg.go.dev/vuln/GO-2026-6611),
 [Go vulnerability DB](https://vuln.go.dev/),
 [APM 8.19 key 권한](https://www.elastic.co/guide/en/observability/8.19/apm-api-key.html).
+
+
+For deployments that require encrypted OTLP transport, set
+`Config.RequireSecureOTLP` or use `EDOT_GO_REQUIRE_SECURE_OTLP=true` with
+`ConfigFromEnv`. Each enabled exporter must resolve to an explicit HTTPS
+endpoint. This policy rejects insecure exporter settings, certificate
+verification bypass and explicitly configured TLS versions below 1.2.
+
+With strict OTLP enabled, a signal endpoint on a different HTTPS origin
+requires its own explicit `ExporterConfig.Headers` when common headers are
+configured. Set an empty map for an exporter that needs no headers.
+
+OpAMP 추가 시점의 재검사에서 Go 표준 라이브러리 GO-2026-6859와
+Kafka 경로의 압축 의존성 GO-2026-6865가 발견되어 최소 Go 1.26.11 및
+github.com/klauspost/compress 1.20.2로 갱신했습니다.
+OpAMP는 별도 인증 헤더, 인증서 검증을 수행하는 HTTPS 연결, 메시지 크기 제한,
+리다이렉트 거부를 사용합니다. 원격 설정은 지원하는 런타임 제어 항목만 적용합니다.

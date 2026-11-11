@@ -1,19 +1,15 @@
 # 설치·업그레이드와 릴리스
 
-이 프로젝트는 Elastic이 지원하는 공식 SDK가 아닌 비공식 부분 포팅이며, Go 1.26.10 이상이 필요합니다.
-현재 GitHub 저장소는 비공개입니다. 접근 가능한 GitHub 계정으로 Git 인증을 먼저 준비하세요.
+이 프로젝트는 Elastic이 지원하는 공식 SDK가 아닌 비공식 부분 포팅이며, Go 1.26.11 이상이 필요합니다.
+GitHub 저장소는 공개되어 있습니다. 최근 개발 기능은 `main` 또는 검증한 커밋을 지정해 설치할 수 있습니다.
 
 ## 버전 고정 설치
 
-기존 Go 프로젝트에서 실행합니다. 기존 `GOPRIVATE` 목록이 있다면 아래 경로를 추가해 사용하세요.
+기존 Go 프로젝트에서 릴리스 태그를 지정해 실행합니다.
 
 ```sh
-GOPRIVATE=github.com/chikilov/edot-go go get github.com/chikilov/edot-go@v0.5.1
+go get github.com/chikilov/edot-go@v0.5.1
 ```
-
-개인 계정에서 Git 인증을 준비할 때 GitHub CLI를 쓴다면 `gh auth setup-git`을 사용할 수 있습니다.
-Go module 다운로드는 private 경로를 public proxy/checksum 서비스로 보내지 않도록 설정합니다.
-접근 권한이 없으면 저장소 관리자로부터 권한을 받아야 합니다.
 
 소스 ZIP/tar.gz를 받아 로컬에서 사용하는 경우 프로젝트의 go.mod에 로컬 replace를 설정할 수도 있습니다.
 
@@ -49,7 +45,7 @@ python3 scripts/package_release.py --ref v0.5.1 --output-dir /안전한/배포/�
 source tar.gz, commit/version을 기록한 release.json, SHA256SUMS입니다.
 
 5. GitHub Release에 위 파일과 검증 요약·알려진 제한을 첨부합니다.
-6. 별도 임시 Go module에서 private Git 인증을 이용해 태그 설치와 `edotgo.Version`을 확인합니다.
+6. 별도 임시 Go module에서 태그 설치와 `edotgo.Version`을 확인합니다.
 
 검증 예:
 

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+import tempfile
 from datetime import datetime, timezone
 import urllib.request
 import urllib.error
@@ -50,6 +51,8 @@ def settings(path, target=None):
         raise ValueError('a matching APM API Key or secret token header is required')
     if any(marker in (endpoint+' '+headers).upper() for marker in ('YOUR_', '<', '>')):
         raise ValueError('replace Cloud endpoint and API Key placeholders in the local file')
+    if values.get('OTEL_EXPORTER_OTLP_INSECURE', '') not in ('', '0', 'f', 'F', 'false', 'False', 'FALSE'):
+        raise ValueError('Cloud checks require verified TLS')
     # A clean process environment avoids stale per-signal credentials/routes.
     for signal in ('TRACES', 'METRICS', 'LOGS'):
         if any(k.startswith('OTEL_EXPORTER_OTLP_'+signal+'_') and k != 'OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE' for k in values):
@@ -74,7 +77,7 @@ def settings(path, target=None):
 def lookup_authorization(values):
     if values.get('ELASTICSEARCH_API_KEY'):
         return 'ApiKey '+values['ELASTICSEARCH_API_KEY']
-    return urllib.parse.unquote(values['OTEL_EXPORTER_OTLP_HEADERS']).split('=', 1)[1]
+    return None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -91,7 +94,7 @@ def observe_version(values):
     if not values.get('ELASTICSEARCH_URL') and not values.get('KIBANA_URL'):
         return None
     auth = lookup_authorization(values)
-    if not auth.lower().startswith('apikey '):
+    if auth is None:
         return None
     headers = {'Authorization': auth}
     if values.get('ELASTICSEARCH_URL'):
@@ -117,8 +120,8 @@ def indexed(values, target, tid, started):
     if not values.get('ELASTICSEARCH_URL') and not values.get('KIBANA_URL'):
         return {'verified': False, 'reason': 'Elasticsearch or Kibana URL not configured'}
     auth = lookup_authorization(values)
-    if not auth.startswith('ApiKey '):
-        return {'verified': False, 'reason': 'APM Bearer token cannot query Elasticsearch'}
+    if auth is None:
+        return {'verified': False, 'reason': 'ELASTICSEARCH_API_KEY is required for storage lookup'}
     patterns = ('traces-apm*', 'logs-apm*', 'metrics-apm*') if target == 'apm' else ('traces-*.otel-*', 'logs-*.otel-*', 'metrics-*.otel-*')
 
     def search(pattern, body):
@@ -202,18 +205,36 @@ def main():
         print(json.dumps({'result': 'PREFLIGHT_PASS', 'compatibility': plan, 'telemetry_sent': False}))
         return 0
     target = plan['target']
-    env = {k: v for k, v in os.environ.items() if not k.startswith(PREFIXES) and k != 'ELASTICSEARCH_API_KEY'}
+    # Keep trust-store and proxy settings needed by the standalone binary.
+    runtime_keys = ('http_proxy', 'https_proxy', 'no_proxy', 'grpc_proxy', 'no_grpc_proxy',
+                    'ssl_cert_file', 'ssl_cert_dir', 'systemroot', 'windir')
+    env = {k: v for k, v in os.environ.items() if k.lower() in runtime_keys}
     env.update({k: v for k, v in values.items() if k.startswith(PREFIXES)})
     protocols = args.protocol or [values.get('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf')]
     if any(p not in ('http/protobuf', 'grpc', 'http/json') for p in protocols):
         print('Unsupported Cloud check protocol.', file=sys.stderr)
         return 2
+    env['EDOT_GO_REQUIRE_SECURE_OTLP'] = 'true'
+    with tempfile.TemporaryDirectory(prefix='edot-cloudcheck-') as directory:
+        binary = Path(directory) / ('cloudcheck.exe' if os.name == 'nt' else 'cloudcheck')
+        build_env = {k: v for k, v in os.environ.items()
+                     if not k.startswith(PREFIXES) and k != 'ELASTICSEARCH_API_KEY'}
+        try:
+            subprocess.run(['go', 'build', '-mod=readonly', '-o', str(binary), './examples/cloudcheck'],
+                           cwd=REPO, env=build_env, capture_output=True, check=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            print(json.dumps({'result': 'FAIL', 'detail': 'Cloud check build failed; raw output suppressed'}))
+            return 1
+        return run_checks(binary, env, values, target, plan, protocols)
+
+
+def run_checks(binary, env, values, target, plan, protocols):
     failed = False
     for protocol in protocols:
         env['OTEL_EXPORTER_OTLP_PROTOCOL'] = protocol
         try:
             started = datetime.now(timezone.utc).isoformat()
-            process = subprocess.run(['go', 'run', './examples/cloudcheck'], cwd=REPO, env=env, capture_output=True, text=True, timeout=90)
+            process = subprocess.run([str(binary)], cwd=REPO, env=env, capture_output=True, text=True, timeout=90)
             # Never echo raw stdout/stderr from exporters: URLs or payloads can appear.
             data = json.loads(process.stdout) if process.returncode == 0 else None
             if not isinstance(data, dict) or not isinstance(data.get('diagnostics'), dict):
@@ -230,7 +251,7 @@ def main():
                 raise ValueError('invalid trace ID')
             storage = indexed(values, target, tid, started)
             print(json.dumps({'target': target, 'compatibility': plan, 'protocol': protocol, 'result': 'PASS', 'trace_id': tid, 'signals': signals, 'indexed_data_verified': storage['verified'], 'storage': storage}))
-            if (values.get('ELASTICSEARCH_URL') or values.get('KIBANA_URL')) and not storage['verified']:
+            if values.get('ELASTICSEARCH_API_KEY') and (values.get('ELASTICSEARCH_URL') or values.get('KIBANA_URL')) and not storage['verified']:
                 failed = True
         except (subprocess.TimeoutExpired, OSError, ValueError, KeyError, TypeError):
             print(json.dumps({'target': target, 'compatibility': plan, 'protocol': protocol, 'result': 'FAIL', 'detail': 'check endpoint, API Key privileges, TLS and protocol support locally; raw exporter output suppressed'}))
